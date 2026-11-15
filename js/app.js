@@ -36,7 +36,8 @@
     var sq = e.openSquawks ? '<span class="' + (e.groundingSquawks ? 'bad' : 'warn') + '">⚑ ' + e.openSquawks + ' squawk' + (e.openSquawks > 1 ? 's' : '') + (e.groundingSquawks ? ' (' + e.groundingSquawks + ' grounding)' : '') + '</span>' : '<span>✓ No open squawks</span>';
     var h = e.hundred;
     var hund = h && h.state !== 'na' ? '<span class="' + (h.state === 'over' ? 'bad' : h.state === 'due' ? 'warn' : '') + '">100-hr: ' + esc(h.value) + (h.state === 'over' ? '' : ' left') + '</span>' : '';
-    var stale = e.hoursStale ? '<span class="warn">⏱ hrs ' + e.staleDays + 'd old</span>' : '';
+    var hrs = '<span>Tach ' + S.hoursLabel(S.meterReading(a, 'tach')) + ' · Hobbs ' + S.hoursLabel(S.meterReading(a, 'hobbs')) + '</span>';
+    var stale = e.hoursStale ? '<span class="warn">⏱ ' + esc(S.meterOf(a)) + ' ' + e.staleDays + 'd old</span>' : '';
     var why = e.reasons.length ? '<div class="why">' + esc(e.reasons.slice(0, 3).join(' · ')) + '</div>' : '';
     var note = noteText(a);
     var sqText = '';
@@ -45,7 +46,7 @@
       '<div class="hd"><span class="tail">' + esc(a.tail) + '</span><span class="ostat s-' + e.overall + '">' + LABEL[e.overall] + '</span><span class="loc">' + esc(locCode(a.location)) + '</span></div>' +
       '<div class="type">' + esc(a.type || '') + (a.ifr === false ? ' · VFR only' : ' · IFR') + '</div>' + why +
       '<div class="pills">' + e.items.map(function (i) { return '<div class="pill s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + i.letter + '</b><span>' + esc(i.value) + '</span></div>'; }).join('') + '</div>' +
-      '<div class="meta">' + hund + sq + stale + '</div>' + (opt.squawkText && !e.groundingSquawks ? sqText : '') +
+      '<div class="meta">' + hrs + hund + sq + stale + '</div>' + (opt.squawkText && !e.groundingSquawks ? sqText : '') +
       (note ? '<div class="note">' + esc(note) + '</div>' : '') + (a.sample ? '<div class="samp">SAMPLE</div>' : '') + '</div>';
   }
   function topbar(title, sub) {
@@ -137,6 +138,7 @@
     var d = document.createElement('div'); d.className = 'sheet';
     d.innerHTML = '<div class="in"><div class="row"><h2 style="margin:0;font-size:24px">' + esc(a.tail) + '</h2><span class="ostat s-' + e.overall + '">' + LABEL[e.overall] + '</span><span class="sp" style="flex:1"></span><button class="btn sm" id="x">Close</button></div>' +
       '<p class="sub" style="color:var(--mute)">' + esc(a.type) + ' · ' + esc((locById(a.location) || {}).name || '') + '</p>' +
+      '<p class="sub" style="color:#d3def0">Tach ' + S.hoursLabel(S.meterReading(a, 'tach')) + (S.meterUpdated(a, 'tach') ? ' (' + S.niceDate(S.meterUpdated(a, 'tach')) + ')' : '') + ' · Hobbs ' + S.hoursLabel(S.meterReading(a, 'hobbs')) + (S.meterUpdated(a, 'hobbs') ? ' (' + S.niceDate(S.meterUpdated(a, 'hobbs')) + ')' : '') + '</p>' +
       (e.reasons.length ? '<div class="banner ' + (e.overall === 'grounded' ? 'red' : '') + '">' + esc(e.reasons.join(' · ')) + '</div>' : '') +
       (noteText(a) ? '<div class="note" style="margin-bottom:10px">' + esc(noteText(a)) + '</div>' : '') +
       '<div class="kv">' + e.items.map(function (i) { return '<div class="l s-' + i.state + '"><b>' + i.letter + '</b>' + esc(i.label) + '</div><div style="color:#cfdcf0">' + esc(i.detail.split(' (The 10-hr')[0]) + '</div><span class="chip s-' + i.state + '">' + esc(i.value) + '</span>'; }).join('') + '</div>' +

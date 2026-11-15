@@ -70,9 +70,12 @@ body.tv{overflow:hidden;cursor:none}
 .wm{position:fixed;inset:92px 0 34px 0;background:url(../img/ppa-logo.png) center/42vh no-repeat;opacity:.05;filter:grayscale(1) brightness(2.2);pointer-events:none;z-index:0}
 .tvgrid,.tvhead,.tvfoot{position:relative;z-index:1}
 /* editor list */
-.erow{display:grid;grid-template-columns:1.2fr 2.4fr 1.4fr auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:8px solid var(--c);border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
+.erow{display:grid;grid-template-columns:1.1fr 2fr minmax(230px,1.9fr) auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:8px solid var(--c);border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
 .erow .t{font-size:22px;font-weight:900}.erow .ty{color:var(--mute);font-size:13px}
-.erow .hrs{display:flex;gap:6px;align-items:center}.erow .hrs input{width:120px}
+.erow .hrs{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.erow .hrs .hmeter{display:flex;flex-direction:column;gap:2px;min-width:110px}
+.erow .hrs .hmeter>span:first-child{font-size:11px;color:var(--mute);font-weight:700;letter-spacing:.3px}
+.erow .hrs input{width:118px}
 @media (max-width:820px){.erow{grid-template-columns:1fr auto}.erow .pills{grid-column:1/-1}.erow .hrs{grid-column:1/-1}}
 .itemrow{display:grid;grid-template-columns:150px 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #1d2d48}
 .itemrow:first-child{border-top:0}

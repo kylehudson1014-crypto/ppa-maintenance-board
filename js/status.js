@@ -58,9 +58,37 @@ var PPAStatus = (function () {
   }
 
   function hoursText(h) { return (Math.round(h * 10) / 10).toFixed(1); }
+  function hoursLabel(h) { return h == null ? '—' : hoursText(h); }
+  function meterOf(a) { return a && a.meter === 'hobbs' ? 'hobbs' : 'tach'; }
+  // Selected-meter hours. A legacy `hours` value belongs to the selected meter only.
+  function meterReading(a, which) {
+    if (!a) return null;
+    which = which || meterOf(a);
+    var v = num(a[which]);
+    if (v != null) return v;
+    if (which === meterOf(a)) return num(a.hours);
+    return null;
+  }
+  function meterUpdated(a, which) {
+    if (!a) return '';
+    which = which || meterOf(a);
+    return a[which + 'Updated'] || (which === meterOf(a) ? (a.hoursUpdated || '') : '') || '';
+  }
+  // Keep hours == the selected meter. Copy a legacy hours value into that meter if it is empty.
+  function syncMeters(a) {
+    if (!a) return a;
+    var m = meterOf(a);
+    if (num(a[m]) == null && num(a.hours) != null) {
+      a[m] = num(a.hours);
+      if (!a[m + 'Updated'] && a.hoursUpdated) a[m + 'Updated'] = a.hoursUpdated;
+    }
+    a.hours = meterReading(a, m);
+    a.hoursUpdated = meterUpdated(a, m) || a.hoursUpdated || '';
+    return a;
+  }
 
   function evalAD(ad, a, R, today) {
-    var cur = num(a.hours);
+    var cur = meterReading(a);
     var dueDate = ad.nextDueDate || null, dueHrs = num(ad.nextDueHours);
     if (num(ad.intervalDays) && ad.lastDoneDate) dueDate = addDays(ad.lastDoneDate, num(ad.intervalDays));
     if (num(ad.intervalMonths) && ad.lastDoneDate) dueDate = addCalMonths(ad.lastDoneDate, num(ad.intervalMonths));
@@ -97,12 +125,12 @@ var PPAStatus = (function () {
       else if (it.key === 'pitot') out.push(dateItem(base, addCalMonths(d.pitot, R.pitot.months), R.pitot.warnDays, today));
       else if (it.key === 'xpdr') out.push(dateItem(base, addCalMonths(d.xpdr, R.xpdr.months), R.xpdr.warnDays, today));
       else if (it.key === 'hundred') {
-        var cur = num(a.hours), last = num(a.last100);
-        if (cur == null || last == null) { out.push(Object.assign(base, { state: 'missing', value: '?', detail: 'Enter current ' + (a.meter || 'tach') + ' and last 100-hr' })); return; }
+        var cur = meterReading(a), last = num(a.last100);
+        if (cur == null || last == null) { out.push(Object.assign(base, { state: 'missing', value: '?', detail: 'Enter current ' + meterOf(a) + ' and last 100-hr' })); return; }
         var due = last + R.hundred.hours, left = due - cur;
         out.push(Object.assign(base, { state: left < 0 ? 'over' : (left <= R.hundred.warnHours ? 'due' : 'ok'), dueHours: due, hoursLeft: left,
           value: left < 0 ? '-' + hoursText(-left) + 'h' : hoursText(left) + 'h', overText: left < 0 ? hoursText(-left) + ' hrs' : '',
-          detail: (left < 0 ? 'OVERDUE — was due at ' : 'Due at ') + hoursText(due) + ' ' + (a.meter || 'tach') + '. (The 10-hr overfly allowance is only to reach a place where the inspection can be done; it does not extend the due time and counts against the next interval.)' }));
+          detail: (left < 0 ? 'OVERDUE — was due at ' : 'Due at ') + hoursText(due) + ' ' + meterOf(a) + '. (The 10-hr overfly allowance is only to reach a place where the inspection can be done; it does not extend the due time and counts against the next interval.)' }));
       }
       else if (it.key === 'elt') {
         var insp = dateItem({}, addCalMonths(d.elt, R.elt.months), R.elt.warnDays, today);
@@ -136,7 +164,8 @@ var PPAStatus = (function () {
       });
       if (dueReasons.length) overall = 'due';
     }
-    var staleDays = a.hoursUpdated ? daysBetween(a.hoursUpdated, today) : null;
+    var staleSrc = meterUpdated(a);
+    var staleDays = staleSrc ? daysBetween(staleSrc, today) : null;
     var hundred = out.filter(function (i) { return i.key === 'hundred'; })[0];
     return { id: a.id, items: out, overall: overall, reasons: overall === 'grounded' ? reasons : dueReasons,
       openSquawks: open.length, groundingSquawks: grounding.length, squawkList: open,
@@ -161,6 +190,7 @@ var PPAStatus = (function () {
   }
 
   return { ITEMS: ITEMS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, alertEvents: alertEvents,
-    todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText };
+    todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText,
+    hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters };
 })();
 if (typeof module !== 'undefined') module.exports = PPAStatus;

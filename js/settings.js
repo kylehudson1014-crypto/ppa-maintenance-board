@@ -3,8 +3,8 @@ var PPASettings = (function () {
   var U = window.PPAUI, V = PPAViews, S = PPAStatus, st = Store.state;
   var esc = U.esc, $ = U.$, $$ = U.$$, toast = U.toast, opt = V.opt, clone = V.clone;
   var GROUPS = ['CFI', 'Customer', 'Renter', 'Mechanic', 'Owner', 'Dispatch'];
-  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'vor_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
-  var ALIASES = { 'tail number': 'tail', tailnumber: 'tail', registration: 'tail', 'n-number': 'tail', aircraft: 'tail', model: 'type', 'make/model': 'type', base: 'location', airport: 'location', 'current hobbs': 'current_hours', 'current tach': 'current_hours', hobbs: 'current_hours', tach: 'current_hours', hours: 'current_hours', 'aircraft id': 'fsp_aircraft_id', aircraftid: 'fsp_aircraft_id' };
+  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_tach', 'tach_date', 'current_hobbs', 'hobbs_date', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'vor_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
+  var ALIASES = { 'tail number': 'tail', tailnumber: 'tail', registration: 'tail', 'n-number': 'tail', aircraft: 'tail', model: 'type', 'make/model': 'type', base: 'location', airport: 'location', 'current hobbs': 'current_hobbs', 'current tach': 'current_tach', hobbs: 'current_hobbs', tach: 'current_tach', 'hobbs time': 'current_hobbs', 'tach time': 'current_tach', hours: 'current_hours', 'current hours': 'current_hours', 'aircraft id': 'fsp_aircraft_id', aircraftid: 'fsp_aircraft_id' };
   var pendingImport = null;
 
   function saveS(mut, msg) { var s = clone(st.settings); mut(s); return Store.saveSettings(s).then(function () { if (msg) toast(msg); U.render(true); }); }
@@ -82,7 +82,7 @@ var PPASettings = (function () {
       '<button class="btn" id="csvout">⬇ Export fleet CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
       '<label class="btn">⬆ Import CSV<input type="file" id="csvin" accept=".csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="jsonout">⬇ Full backup (JSON)</button>' + (st.mode === 'demo' ? '<label class="btn">⬆ Restore backup<input type="file" id="jsonin" accept=".json" class="hide"></label><button class="btn" id="reset">Reload SAMPLE data</button><button class="btn bad" id="clear">Start empty (remove samples)</button>' : '') + '</div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Import matches by tail number (or FSP aircraft ID). Blank cells never erase data, so a 2-column file (tail, current_hours) just updates hours. Dates: YYYY-MM-DD or M/D/YYYY. Unknown locations/types are added to your lists. Column names like "Tail Number", "Hobbs", "Tach" are recognized.</p>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Import matches by tail number (or FSP aircraft ID). Blank cells never erase data, so a 2-column file (tail, current_tach) just updates Tach. Use current_tach and current_hobbs for the two meters; current_hours still updates the selected 100-hr meter. Dates: YYYY-MM-DD or M/D/YYYY. Unknown locations/types are added to your lists. Column names like "Tail Number", "Hobbs", "Current Tach" are recognized.</p>' +
       '<div id="imp">' + importPreview() + '</div></div>' +
 
       // live
@@ -131,7 +131,7 @@ var PPASettings = (function () {
     var head = CSV_COLS.concat(['status', 'reasons']);
     var lines = [head.join(',')].concat(st.aircraft.map(function (a) {
       var d = a.dates || {};
-      return [a.tail, a.type, U.locCode(a.location), a.meter, a.hours, a.hoursUpdated, a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, d.vor, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
+      return [a.tail, a.type, U.locCode(a.location), a.meter, S.meterReading(a, 'tach'), S.meterUpdated(a, 'tach'), S.meterReading(a, 'hobbs'), S.meterUpdated(a, 'hobbs'), S.meterReading(a), S.meterUpdated(a), a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, d.vor, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
     }));
     download('ppa-fleet-' + S.todayStr() + '.csv', lines.join('\n'), 'text/csv');
   }
@@ -147,13 +147,33 @@ var PPASettings = (function () {
       var tail = (o.tail || '').toUpperCase().replace(/\s/g, '');
       var ex = st.aircraft.filter(function (a) { return (tail && a.tail.toUpperCase().replace(/-/g, '') === tail.replace(/-/g, '')) || (o.fsp_aircraft_id && a.fspAircraftId === o.fsp_aircraft_id); })[0];
       if (!ex && !tail) { warn.push('Row ' + (n + 2) + ': no tail number, skipped'); return; }
-      var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
+      var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, hoursUpdated: '', tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '', ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
       var ch = [];
       function setv(k, v, label) { if (v === null || v === undefined || v === '') return; if (JSON.stringify(getp(a, k)) !== JSON.stringify(v)) { setp(a, k, v); ch.push(label); } }
       if (o.type) { if (types.indexOf(o.type) < 0) { types.push(o.type); newTypes.push(o.type); } setv('type', o.type, 'type'); }
       if (o.location) { var L = locs.filter(function (l) { return l.code.toLowerCase() === o.location.toLowerCase() || l.name.toLowerCase() === o.location.toLowerCase(); })[0]; if (!L) { L = { id: o.location.toLowerCase().replace(/[^a-z0-9]/g, '') || PPASample.uid(), code: o.location.toUpperCase(), name: o.location }; locs.push(L); newLocs.push(L.code); } setv('location', L.id, 'location'); }
       if (o.meter) setv('meter', /hobbs/i.test(o.meter) ? 'hobbs' : 'tach', 'meter');
-      if (o.current_hours) { var hv = Number(o.current_hours.replace(/,/g, '')); if (isNaN(hv)) warn.push(tail + ': hours "' + o.current_hours + '" not a number'); else { if (ex && ex.hours != null && hv < ex.hours) warn.push(tail + ': hours go DOWN ' + ex.hours + ' → ' + hv + ' (check)'); setv('hours', hv, 'hours'); if (ch.indexOf('hours') >= 0) a.hoursUpdated = normDate(o.hours_date) || S.todayStr(); } }
+      function applyHours(col, field, dateCol, label) {
+        if (!o[col]) return;
+        var hv = Number(String(o[col]).replace(/,/g, ''));
+        if (isNaN(hv)) { warn.push(tail + ': ' + label + ' "' + o[col] + '" not a number'); return; }
+        var prev = field === 'hours' ? S.meterReading(a) : S.meterReading(a, field);
+        if (ex && prev != null && hv < prev) warn.push(tail + ': ' + label + ' goes DOWN ' + prev + ' → ' + hv + ' (check)');
+        if (field === 'hours') {
+          var m = S.meterOf(a);
+          setv(m, hv, label);
+          if (ch.indexOf(label) >= 0) a[m + 'Updated'] = normDate(o[dateCol]) || S.todayStr();
+        } else {
+          setv(field, hv, label);
+          if (ch.indexOf(label) >= 0) a[field + 'Updated'] = normDate(o[dateCol]) || S.todayStr();
+        }
+      }
+      applyHours('current_tach', 'tach', 'tach_date', 'tach');
+      applyHours('current_hobbs', 'hobbs', 'hobbs_date', 'hobbs');
+      // legacy current_hours updates the selected 100-hr meter only if that meter was not in this row
+      var selCol = 'current_' + S.meterOf(a);
+      if (o.current_hours && !o[selCol]) applyHours('current_hours', 'hours', 'hours_date', 'hours');
+      S.syncMeters(a);
       if (o.last_100hr_at) { var lv = Number(o.last_100hr_at.replace(/,/g, '')); if (!isNaN(lv)) setv('last100', lv, 'last 100-hr'); }
       [['ifr', 'ifr'], ['for_hire', 'forHire']].forEach(function (p) { if (o[p[0]] !== undefined) { var y = yes(o[p[0]]); if (y !== null) setv(p[1], y, p[0]); } });
       [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (p) {

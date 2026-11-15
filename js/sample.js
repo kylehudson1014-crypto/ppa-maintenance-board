@@ -24,10 +24,17 @@ var PPASample = (function () {
     function plane(o) {
       var p = { id: uid(), sample: true, meter: 'tach', ifr: true, forHire: true, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '',
         hoursUpdated: ago(1), fspAircraftId: '', order: 0, updatedAt: new Date().toISOString() };
-      return Object.assign(p, o);
+      p = Object.assign(p, o);
+      if (p.tach == null && p.hours != null) p.tach = p.hours;
+      if (p.hobbs == null && p.tach != null) p.hobbs = Math.round((Number(p.tach) + 650 + (Number(p.tach) % 80)) * 10) / 10;
+      p.tachUpdated = p.tachUpdated || p.hoursUpdated || ago(1);
+      p.hobbsUpdated = p.hobbsUpdated || p.hoursUpdated || ago(1);
+      p.hours = p.meter === 'hobbs' ? p.hobbs : p.tach;
+      p.hoursUpdated = p.meter === 'hobbs' ? p.hobbsUpdated : p.tachUpdated;
+      return p;
     }
     var ac = [
-      plane({ tail: 'N734PA', type: 'Cessna 172S', location: 'kecp', hours: 4412.6, last100: 4361.0, dates: { annual: ago(120), vor: ago(6), pitot: ago(300), xpdr: ago(300), elt: ago(120), eltBattery: ahead(600) },
+      plane({ tail: 'N734PA', type: 'Cessna 172S', location: 'kecp', hours: 4412.6, tach: 4412.6, hobbs: 5120.3, last100: 4361.0, dates: { annual: ago(120), vor: ago(6), pitot: ago(300), xpdr: ago(300), elt: ago(120), eltBattery: ahead(600) },
         ads: [{ id: uid(), number: '2011-10-09', desc: 'Seat rail inspection', intervalHours: 100, lastDoneHours: 4361.0, lastDoneDate: ago(40) }] }),
       plane({ tail: 'N52817', type: 'Cessna 172N', location: 'kecp', hours: 7210.4, last100: 7116.9, dates: { annual: ago(200), vor: ago(12), pitot: ago(400), xpdr: ago(400), elt: ago(200), eltBattery: ahead(300) },
         ads: [{ id: uid(), number: '2011-10-09', desc: 'Seat rail inspection', intervalHours: 100, lastDoneHours: 7116.9 }] }),

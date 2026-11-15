@@ -4,6 +4,10 @@ var PPAViews = (function () {
   var esc = U.esc, $ = U.$, $$ = U.$$, toast = U.toast, remember = U.remember;
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function today() { return S.todayStr(); }
+  function reading(a, which) { return S.meterReading(a, which); }
+  function updated(a, which) { return S.meterUpdated(a, which); }
+  function hrsVal(a, which) { var v = reading(a, which); return v == null ? '' : v; }
+  function meterName(m) { return m === 'hobbs' ? 'Hobbs' : 'Tach'; }
   function opt(v, label, sel) { return '<option value="' + esc(v) + '"' + (String(v) === String(sel) ? ' selected' : '') + '>' + esc(label) + '</option>'; }
   function locOptions(sel, blank) { return (blank ? opt('', blank, sel) : '') + (st.settings.locations || []).map(function (l) { return opt(l.id, l.code + ' — ' + l.name, sel); }).join(''); }
   function typeOptions(sel) { var t = (st.settings.types || []).slice(); if (sel && t.indexOf(sel) < 0) t.unshift(sel); return t.map(function (x) { return opt(x, x, sel); }).join('') + opt('__new', '+ Add a new type…', ''); }
@@ -66,7 +70,10 @@ var PPAViews = (function () {
         var e = ev[a.id];
         return '<div class="erow s-' + e.overall + '"><div><div class="t">' + esc(a.tail) + (a.sample ? ' <span class="chip s-due" style="font-size:10px">SAMPLE</span>' : '') + '</div><div class="ty">' + esc(a.type) + ' · ' + esc(U.locCode(a.location)) + '</div><span class="ostat s-' + e.overall + '" style="font-size:12px">' + U.LABEL[e.overall] + '</span>' + (e.openSquawks ? ' <span class="chip s-' + (e.groundingSquawks ? 'over' : 'due') + '">⚑ ' + e.openSquawks + '</span>' : '') + '</div>' +
           '<div class="pills">' + e.items.map(function (i) { return '<div class="pill s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + i.letter + '</b><span>' + esc(i.value) + '</span></div>'; }).join('') + '</div>' +
-          '<div class="hrs"><input type="number" step="0.1" inputmode="decimal" data-hrs="' + a.id + '" value="' + esc(a.hours == null ? '' : a.hours) + '" title="Current ' + esc(a.meter || 'tach') + '"><span class="sub" style="color:' + (e.hoursStale ? 'var(--due)' : 'var(--mute)') + ';font-size:12px">' + esc(a.meter || 'tach') + '<br>' + (a.hoursUpdated ? S.niceDate(a.hoursUpdated) : 'never') + '</span></div>' +
+          '<div class="hrs">' + ['tach', 'hobbs'].map(function (m) {
+            var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
+            return '<div class="hmeter"><span>' + meterName(m) + '</span><input type="number" step="0.1" inputmode="decimal" data-hrs="' + a.id + '" data-meter="' + m + '" value="' + esc(hrsVal(a, m)) + '" title="Current ' + meterName(m) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + ';font-size:11px">' + (ud ? S.niceDate(ud) : 'never') + '</span></div>';
+          }).join('') + '</div>' +
           '<div class="row">' + (sort === 'custom' ? '<button class="iconbtn" data-up="' + a.id + '">↑</button><button class="iconbtn" data-dn="' + a.id + '">↓</button>' : '') + '<a class="btn" href="#edit/' + a.id + '">Open ›</a></div></div>';
       }).join('') + (list.length ? '' : '<div class="card">No aircraft match. Tap + Add aircraft.</div>') + '<p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
     if ($('#dr')) $('#dr').onchange = function () { Store.setDemoRole(this.value); if (this.value === 'cfi') location.hash = '#squawk'; };
@@ -75,7 +82,13 @@ var PPAViews = (function () {
     $('#so').onchange = function () { remember('edSort', this.value); U.render(true); };
     $('#add').onclick = addSheet;
     $$('[data-hrs]').forEach(function (i) {
-      function save() { var a = clone(byId(i.dataset.hrs)); var v = i.value === '' ? null : Number(i.value); if (v === a.hours) return; if (a.hours != null && v != null && v < a.hours && !confirm('New hours (' + v + ') are LOWER than before (' + a.hours + '). Save anyway?')) { i.value = a.hours; return; } a.hours = v; a.hoursUpdated = today(); logEntry(a, 'Hours set to ' + v); Store.saveAircraft(a).then(function () { toast(a.tail + ' hours saved'); }); }
+      function save() {
+        var a = clone(byId(i.dataset.hrs)), m = i.dataset.meter || 'tach', v = i.value === '' ? null : Number(i.value), prev = reading(a, m);
+        if (v === prev || (v == null && prev == null)) return;
+        if (prev != null && v != null && v < prev && !confirm('New ' + meterName(m) + ' (' + v + ') is LOWER than before (' + prev + '). Save anyway?')) { i.value = prev; return; }
+        a[m] = v; a[m + 'Updated'] = today(); logEntry(a, meterName(m) + ' set to ' + v);
+        Store.saveAircraft(a).then(function () { toast(a.tail + ' ' + meterName(m) + ' saved'); });
+      }
       i.onchange = save; i.onkeydown = function (k) { if (k.key === 'Enter') i.blur(); };
     });
     function move(id, d) {
@@ -100,6 +113,7 @@ var PPAViews = (function () {
       if (st.aircraft.some(function (a) { return a.tail.toUpperCase() === tail; })) return toast(tail + ' already exists', true);
       remember('lastType', $('#ny', d).value); remember('lastLoc', $('#nl', d).value);
       var a = { id: PPASample.uid(), tail: tail, type: $('#ny', d).value, location: $('#nl', d).value, meter: remember('lastMeter') || 'tach', hours: null, last100: null, hoursUpdated: '',
+        tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '',
         ifr: $('#ni', d).checked, forHire: $('#nh', d).checked, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length, log: [] };
       logEntry(a, 'Aircraft added');
       Store.saveAircraft(a).then(function () { d.remove(); location.hash = '#edit/' + a.id; });
@@ -141,15 +155,18 @@ var PPAViews = (function () {
       '<label class="f">Tail number' + fld('tail', 'text', ' autocapitalize="characters"') + '</label>' +
       '<label class="f">Type<select data-f="type">' + typeOptions(a.type) + '</select></label>' +
       '<label class="f">Location<select data-f="location">' + locOptions(a.location) + '</select></label></div><div class="row">' +
-      '<label class="f">100-hr tracked by<select data-f="meter">' + opt('tach', 'Tach', a.meter) + opt('hobbs', 'Hobbs', a.meter) + '</select></label>' +
-      '<label class="f">Current ' + esc(a.meter || 'tach') + ' hours' + fld('hours', 'number', ' step="0.1" inputmode="decimal"') + '</label>' +
-      '<div class="f" style="color:var(--mute);font-size:12px">Hours last updated<br><b style="color:' + (e.hoursStale ? 'var(--due)' : '#fff') + ';font-size:15px">' + (a.hoursUpdated ? S.niceDate(a.hoursUpdated) : 'never') + '</b></div></div>' +
+      '<label class="f" style="max-width:280px">100-hr tracked by<select data-f="meter">' + opt('tach', 'Tach', a.meter) + opt('hobbs', 'Hobbs', a.meter) + '</select></label></div>' +
+      '<div class="row">' +
+      ['tach', 'hobbs'].map(function (m) {
+        var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
+        return '<label class="f">Current ' + meterName(m) + '<input type="number" step="0.1" inputmode="decimal" data-f="' + m + '" value="' + esc(hrsVal(a, m)) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + '">Updated ' + (ud ? S.niceDate(ud) : 'never') + '</span></label>';
+      }).join('') + '</div>' +
       '<div class="row">' + chk('ifr', 'IFR certified (tracks VOR + pitot-static)') + chk('forHire', 'Used for hire / instruction (100-hr applies)') + '</div></div>' +
 
       '<div class="card"><h2>A V 1 A T E D</h2>' +
       dateItem('annual', 'Annual — last done') +
       dateItem('vor', 'VOR check — last done') +
-      itemRow('hundred', '<label class="f">Last 100-hr done at (' + esc(a.meter || 'tach') + ')' + fld('last100', 'number', ' step="0.1" inputmode="decimal"') + '</label>', '<button class="btn ok" data-done="hundred">✓ Done at ' + esc(a.hours == null ? '?' : a.hours) + '</button>') +
+      itemRow('hundred', '<label class="f">Last 100-hr done at (' + esc(S.meterOf(a)) + ')' + fld('last100', 'number', ' step="0.1" inputmode="decimal"') + '</label>', '<button class="btn ok" data-done="hundred">✓ Done at ' + esc(reading(a) == null ? '?' : reading(a)) + '</button>') +
       dateItem('pitot', 'Altimeter/pitot-static (91.411) — last done') +
       dateItem('xpdr', 'Transponder (91.413) — last done') +
       itemRow('elt', '<div class="row"><label class="f">ELT inspection — last done' + fld('dates.elt', 'date') + '</label><label class="f">ELT battery expires' + fld('dates.eltBattery', 'date') + '</label></div>', '<button class="btn ok" data-done="elt">✓ Inspected today</button>') +
@@ -188,14 +205,17 @@ var PPAViews = (function () {
         var path = el.dataset.f, v = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
         if (path === 'type' && v === '__new') { var t = prompt('New aircraft type'); if (!t) { U.render(true); return; } t = t.trim(); var s = clone(st.settings); s.types = (s.types || []).concat([t]); Store.saveSettings(s); v = t; }
         if (path === 'tail') { v = String(v).trim().toUpperCase(); if (!v) { U.render(true); return; } }
-        if (path === 'hours' && a.hours != null && v != null && v < a.hours && !confirm('New hours are LOWER than before (' + a.hours + '). Save anyway?')) { U.render(true); return; }
+        if ((path === 'tach' || path === 'hobbs')) {
+          var prev = reading(a, path);
+          if (prev != null && v != null && v < prev && !confirm('New ' + meterName(path) + ' is LOWER than before (' + prev + '). Save anyway?')) { U.render(true); return; }
+        }
         save(function (c) {
           setPath(c, path, v);
-          if (path === 'hours') c.hoursUpdated = today();
+          if (path === 'tach' || path === 'hobbs') c[path + 'Updated'] = today();
           if (path === 'meter') remember('lastMeter', v);
           if (path === 'location') remember('lastLoc', v);
           if (path === 'grounded' && v && !c.groundedReason) c.groundedReason = (st.settings.groundPresets || [])[0] || '';
-          logEntry(c, path + ' → ' + (v === true ? 'yes' : v === false ? 'no' : v));
+          logEntry(c, (path === 'tach' || path === 'hobbs' ? meterName(path) : path) + ' → ' + (v === true ? 'yes' : v === false ? 'no' : v));
         });
       };
     });
@@ -204,7 +224,7 @@ var PPAViews = (function () {
       b.onclick = function () {
         var k = b.dataset.done;
         save(function (c) {
-          if (k === 'hundred') { if (c.hours == null) { toast('Enter current hours first', true); return; } c.last100 = c.hours; logEntry(c, '100-hr done at ' + c.hours); }
+          if (k === 'hundred') { var cur = reading(c); if (cur == null) { toast('Enter current ' + S.meterOf(c) + ' first', true); return; } c.last100 = cur; logEntry(c, '100-hr done at ' + cur + ' ' + S.meterOf(c)); }
           else { c.dates = c.dates || {}; c.dates[k] = today(); logEntry(c, k + ' done ' + today()); }
           if (c.na) c.na[k] = false;
         }, '✓ Marked done — next due rolled forward');
@@ -226,7 +246,7 @@ var PPAViews = (function () {
     });
     $('#addad').onclick = function () { save(function (c) { c.ads = c.ads || []; c.ads.push({ id: PPASample.uid(), number: '', desc: '', intervalMonths: null, intervalDays: null, intervalHours: null, lastDoneDate: '', lastDoneHours: null, nextDueDate: '', nextDueHours: null }); }, 'AD added — fill in the details'); };
     $$('[data-adrm]').forEach(function (b) { b.onclick = function () { if (!confirm('Remove this AD from tracking?')) return; save(function (c) { var r = c.ads.splice(+b.dataset.adrm, 1)[0]; logEntry(c, 'AD removed ' + (r.number || '')); }); }; });
-    $$('[data-addone]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = c.ads[+b.dataset.addone]; ad.lastDoneDate = today(); if (c.hours != null) ad.lastDoneHours = c.hours; if (!ad.intervalMonths && !ad.intervalDays && !ad.intervalHours) { ad.nextDueDate = ''; ad.nextDueHours = null; ad.inactive = true; } logEntry(c, 'AD ' + (ad.number || '') + ' complied ' + today()); }, '✓ AD complied — next due rolled forward'); }; });
+    $$('[data-addone]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = c.ads[+b.dataset.addone]; ad.lastDoneDate = today(); var cur = reading(c); if (cur != null) ad.lastDoneHours = cur; if (!ad.intervalMonths && !ad.intervalDays && !ad.intervalHours) { ad.nextDueDate = ''; ad.nextDueHours = null; ad.inactive = true; } logEntry(c, 'AD ' + (ad.number || '') + ' complied ' + today()); }, '✓ AD complied — next due rolled forward'); }; });
     // squawks
     $$('[data-sqsev]').forEach(function (el) { el.onchange = function () { var s = clone(st.squawks.filter(function (x) { return x.id === el.dataset.sqsev; })[0]); s.severity = el.value; Store.updateSquawk(s).then(function () { toast('Squawk updated'); U.render(true); }); }; });
     $$('[data-fix]').forEach(function (b) { b.onclick = function () { var fix = prompt('What was done? (optional)', ''); if (fix === null) return; var s = clone(st.squawks.filter(function (x) { return x.id === b.dataset.fix; })[0]); s.status = 'closed'; s.fix = fix; s.closedAt = new Date().toISOString(); s.closedBy = who(); Store.updateSquawk(s).then(function () { toast('Squawk cleared'); U.render(true); }); }; });

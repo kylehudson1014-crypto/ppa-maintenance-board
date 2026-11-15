@@ -91,7 +91,7 @@ var Store = (function () {
     resetPassword: function (email) { return auth.sendPasswordResetEmail(email.trim()); },
 
     saveAircraft: function (a) {
-      a = clone(a); a.updatedAt = now(); delete a._priv;
+      a = clone(a); if (window.PPAStatus && PPAStatus.syncMeters) PPAStatus.syncMeters(a); a.updatedAt = now(); delete a._priv;
       if (st.mode === 'demo') { var i = st.aircraft.findIndex(function (x) { return x.id === a.id; }); if (i >= 0) st.aircraft[i] = a; else st.aircraft.push(a); demoSave(); return Promise.resolve(a); }
       var id = a.id; delete a.id; return db.doc('aircraft/' + id).set(a).then(function () { a.id = id; return a; });
     },
