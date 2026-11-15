@@ -1,0 +1,42 @@
+rules_version = '2';
+// PPA Maintenance Board — Firestore security rules.
+// Public (TV, customers): read aircraft, open squawks and public settings only.
+// CFI: + create a squawk.   Editor (owner/mechanic): everything.   Alerts robot: + read alert settings.
+// Roles live in /roles/{lower-case email}. The first editor is added by hand in the Firebase console.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function roleDoc() { return /databases/$(db)/documents/roles/$(myEmail()); }
+    function role() { return signedIn() && exists(roleDoc()) ? get(roleDoc()).data.role : ''; }
+    function isEditor() { return role() == 'editor'; }
+    function canSquawk() { return role() in ['editor', 'cfi']; }
+
+    match /config/public { allow read: if true; allow write: if isEditor(); }
+    match /config/alerts { allow read: if isEditor() || role() == 'alerts'; allow write: if isEditor(); }
+    match /config/{other} { allow read, write: if isEditor(); }
+
+    match /roles/{email} {
+      allow read: if isEditor() || (signedIn() && myEmail() == email);
+      allow write: if isEditor();
+    }
+
+    match /aircraft/{id} { allow read: if true; allow write: if isEditor(); }
+    match /aircraftPrivate/{id} { allow read, write: if isEditor(); }
+
+    match /squawks/{id} {
+      allow read: if true;
+      allow create: if isEditor() || (canSquawk()
+        && request.resource.data.keys().hasOnly(['aircraftId', 'tail', 'text', 'severity', 'grounding', 'status', 'reportedBy', 'createdAt'])
+        && request.resource.data.status == 'open'
+        && request.resource.data.severity in ['grounding', 'open', 'info']
+        && request.resource.data.grounding == (request.resource.data.severity == 'grounding')
+        && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500
+        && request.resource.data.reportedBy is string && request.resource.data.reportedBy.size() <= 80
+        && exists(/databases/$(db)/documents/aircraft/$(request.resource.data.aircraftId)));
+      allow update, delete: if isEditor();
+    }
+
+    match /{path=**} { allow read, write: if false; }
+  }
+}

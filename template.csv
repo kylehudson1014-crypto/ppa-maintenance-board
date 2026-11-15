@@ -1,0 +1,2 @@
+tail,type,location,meter,current_hours,hours_date,ifr,for_hire,annual_done,vor_done,last_100hr_at,pitot_static_done,transponder_done,elt_done,elt_battery_expires,status_note,expected_back,fsp_aircraft_id
+N12345,Cessna 172S,KECP,tach,1234.5,2026-11-14,yes,yes,2026-03-10,2026-11-01,1180.0,2025-06-15,2025-06-15,2026-03-10,2028-01-31,,,

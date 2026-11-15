@@ -1,0 +1,2 @@
+{ "name": "PPA Maintenance Board", "short_name": "PPA Mx Board", "start_url": "./#board", "scope": "./", "display": "standalone", "background_color": "#07101d", "theme_color": "#07101d",
+  "icons": [ { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png" }, { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png" } ] }
