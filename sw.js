@@ -1,5 +1,5 @@
 /* Offline cache: app shell cache-first with background refresh; Firebase SDK cached at runtime. Firestore keeps its own offline copy. */
-var CACHE = 'ppa-mb-v2';
+var CACHE = 'ppa-mb-v3';
 var SHELL = ['./', 'index.html', 'css/app.css?v=2', 'js/config.js?v=2', 'js/status.js?v=2', 'js/sample.js?v=2', 'js/store.js?v=2', 'js/app.js?v=2', 'js/views.js?v=2', 'js/settings.js?v=2', 'img/ppa-logo.png', 'img/icon-192.png', 'img/icon-512.png', 'manifest.webmanifest', 'template.csv'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); })); });
