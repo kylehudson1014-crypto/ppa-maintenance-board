@@ -40,7 +40,7 @@ var Store = (function () {
       })
       .then(function () {
         st.settings = st.settings || PPASample.build().settings; st.settings.locations = st.settings.locations || [];
-        unsubs.push(db.doc('config/public').onSnapshot(function (s) { if (s.exists) st.settings = s.data(); else st.settings = emptySettings(); st.fromCache = s.metadata.fromCache; st.ready = true; emit(); }, err));
+        unsubs.push(db.doc('config/public').onSnapshot(function (s) { st.settingsSaved = s.exists && !s.metadata.fromCache ? true : (s.exists || st.settingsSaved); if (s.exists) st.settings = s.data(); else st.settings = emptySettings(); st.fromCache = s.metadata.fromCache; st.ready = true; emit(); }, err));
         unsubs.push(db.collection('aircraft').onSnapshot(function (q) { st.aircraft = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); st.fromCache = q.metadata.fromCache; emit(); }, err));
         unsubs.push(db.collection('squawks').where('status', '==', 'open').onSnapshot(function (q) { st.squawks = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); emit(); }, err));
         auth.onAuthStateChanged(function (u) {
@@ -50,6 +50,9 @@ var Store = (function () {
           db.doc('roles/' + normEmail(u.email)).get().then(function (r) {
             st.role = r.exists ? (r.data().role || 'public') : 'none'; st.name = r.exists ? (r.data().name || '') : '';
             if (st.role === 'editor') {
+              // first editor sign-in on a new project: save default lists/locations so every screen shares them
+              db.doc('config/public').get({ source: 'server' }).then(function (d) { if (!d.exists) { var e = emptySettings(); e.updatedAt = now(); return db.doc('config/public').set(e); } }).catch(function () {});
+              db.doc('config/alerts').get({ source: 'server' }).then(function (d) { if (!d.exists) return db.doc('config/alerts').set(emptyAlerts()); }).catch(function () {});
               privUnsubs.push(db.collection('aircraftPrivate').onSnapshot(function (q) { var p = {}; q.docs.forEach(function (d) { p[d.id] = d.data(); }); st.priv = p; emit(); }, err));
               privUnsubs.push(db.doc('config/alerts').onSnapshot(function (s) { st.alerts = s.exists ? s.data() : emptyAlerts(); emit(); }, err));
               privUnsubs.push(db.collection('roles').onSnapshot(function (q) { st.roles = q.docs.map(function (d) { return Object.assign({ email: d.id }, d.data()); }); emit(); }, err));

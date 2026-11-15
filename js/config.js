@@ -4,5 +4,5 @@
    This is NOT a secret; security comes from the Firestore rules. */
 window.PPA_CONFIG = {
   firebaseConfig: null,
-  setupDocUrl: ''
+  setupDocUrl: 'https://docs.google.com/document/d/1S805Zv7ZyJvhm5MF_tJmQg8SNcFF4NTFdd2DrboUGEk/edit'
 };
