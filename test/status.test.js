@@ -54,9 +54,10 @@ ok('overdue AD grounds', e.overall === 'grounded');
 e = ev(plane({ ads: [Object.assign({}, ad, { ignored: true })] }));
 ok('ignored AD does not ground, listed as ignored', e.overall === 'ok' && item(e, 'ads').ignoredAds.length === 1, e.reasons);
 e = ev(plane({ ads: [Object.assign({}, fspOil, { ignored: true })], tach: 1060, last100: 1050 }));
-ok('ignored oil change -> 50 shows N/A, no virtual re-added', item(e, 'oil50').state === 'na' && item(e, 'oil50').ads.length === 0 && e.overall === 'ok', item(e, 'oil50'));
+ok('oil change can never be ignored: old ignored flag overridden (N645EP/N9559D case)', item(e, 'oil50').state === 'due' && item(e, 'oil50').nonGroundingOverdue && item(e, 'oil50').ads.length === 1 && e.overall === 'due', item(e, 'oil50'));
+ok('GPS pattern never matches an oil change', !S.isGpsUpdate({ desc: '50 Hour Oil Change (Non-Grounding)' }) && !S.isIgnoredAD({ desc: '50 Hour Oil Change', ignored: true }) && !S.isIgnoredAD({ desc: 'GPS database oil change' }));
 e = ev(plane({ na: { oil50: true }, tach: 1030 }));
-ok('N/A box on 50 hides the oil change', item(e, 'oil50').state === 'na' && e.overall === 'ok', e.reasons);
+ok('N/A flag on 50 is overridden: oil change always tracked', item(e, 'oil50').state === 'due' && e.overall === 'due', e.reasons);
 
 // existing non-grounding behaviour still works
 e = ev(plane({ ads: [{ id: 'n1', desc: 'Something (Non-Grounding)', nextDueDate: ago(2) }] }));

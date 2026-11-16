@@ -93,10 +93,11 @@ var PPAStatus = (function () {
   // A 50-hour oil change reminder (FSP "50 Hour Oil Change", "50 hr oil", "Oil change", ...).
   var OIL50_RE = /\b50\s*-?\s*(hour|hr|h)s?\b.*\boil\b|\boil\s*(and\s*filter\s*)?change\b|\boil\b.*\b50\s*-?\s*(hour|hr|h)s?\b/i;
   function adText(ad) { return String((ad && ad.number) || '') + ' ' + String((ad && ad.desc) || ''); }
-  function isGpsUpdate(ad) { return GPS_RE.test(adText(ad)); }
+  function isGpsUpdate(ad) { return !isOilChange(ad) && GPS_RE.test(adText(ad)); }
   function isOilChange(ad) { return !!ad && (ad.kind === 'oil50' || OIL50_RE.test(adText(ad))); }
   // Ignored = editor tapped Ignore, or a GPS/nav update the editor has not explicitly restored.
-  function isIgnoredAD(ad) { if (!ad) return false; if (ad.ignored === true) return true; if (ad.ignored === false) return false; return isGpsUpdate(ad); }
+  // The 50-hr oil change can never be ignored (Kyle, 11/16/2026): any old `ignored` flag on it is overridden.
+  function isIgnoredAD(ad) { if (!ad || isOilChange(ad)) return false; if (ad.ignored === true) return true; if (ad.ignored === false) return false; return isGpsUpdate(ad); }
   // Default 50-hr oil change for planes that do not already track one (e.g. from FSP).
   // Starting point: the last 100-hr (oil is changed at the 100-hr), unless an editor records one.
   function defaultOil50(a, R) {
@@ -153,7 +154,7 @@ var PPAStatus = (function () {
     var out = [];
     ITEMS.forEach(function (it) {
       var base = { key: it.key, letter: it.letter, label: it.label, short: it.short };
-      if (na[it.key] || (it.key === 'pitot' && a.ifr === false) || (it.key === 'hundred' && a.forHire === false)) {
+      if ((na[it.key] && it.key !== 'oil50') || (it.key === 'pitot' && a.ifr === false) || (it.key === 'hundred' && a.forHire === false)) {
         out.push(Object.assign(base, { state: 'na', value: 'N/A', detail: 'Not applicable' })); return;
       }
       if (it.key === 'annual') out.push(dateItem(base, addCalMonths(d.annual, R.annual.months), R.annual.warnDays, today));
