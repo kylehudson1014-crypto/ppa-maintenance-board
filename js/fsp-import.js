@@ -451,8 +451,10 @@ var PPAFspImport = (function () {
           number: p.number, desc: p.desc || r.name,
           intervalMonths: null, intervalDays: null, intervalHours: null,
           lastDoneDate: r.lastDate || '', lastDoneHours: r.lastTime,
-          nextDueDate: r.dueDate || '', nextDueHours: null
+          nextDueDate: r.dueDate || '', nextDueHours: null,
+          nonGrounding: /non\s*-?\s*grounding/i.test(r.name || '')
         };
+        if (ad.nonGrounding) ad.desc = String(ad.desc || '').replace(/\s*\(?\s*non\s*-?\s*grounding\s*\)?/ig, '').trim() || ad.desc;
         var cur = a.meters[a.meter];
         if (r.lastTime != null && r.dueInHours != null && cur != null) {
           var iv = inferredInterval(r.lastTime, r.dueInHours, cur);

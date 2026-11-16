@@ -523,6 +523,7 @@ var PPAViews = (function () {
           '<label class="f">Last done at hours<input type="number" step="0.1" data-ad="' + k + '.lastDoneHours" value="' + esc(ad.lastDoneHours == null ? '' : ad.lastDoneHours) + '"></label></div><div class="row">' +
           '<label class="f">One-time: next due date<input type="date" data-ad="' + k + '.nextDueDate" value="' + esc(ad.nextDueDate || '') + '"></label>' +
           '<label class="f">One-time: next due hours<input type="number" step="0.1" data-ad="' + k + '.nextDueHours" value="' + esc(ad.nextDueHours == null ? '' : ad.nextDueHours) + '"></label>' +
+          '<label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-adng="' + k + '"' + (ad.nonGrounding ? ' checked' : '') + '> Non-grounding (overdue shows amber, plane stays available)</label>' +
           '<button class="btn ok" data-addone="' + k + '">✓ Complied today</button><button class="iconbtn" data-adrm="' + k + '" title="Remove">✕</button></div>' + (ae ? '<div class="sub" style="color:#cfdcf0;font-size:13px">' + esc(ae.detail) + '</div>' : '') + '</div>';
       }).join('') + '</div><br><button class="btn" id="addad">+ Add AD</button></div>' +
 
@@ -582,6 +583,7 @@ var PPAViews = (function () {
       };
     });
     $('#addad').onclick = function () { save(function (c) { c.ads = c.ads || []; c.ads.push({ id: PPASample.uid(), number: '', desc: '', intervalMonths: null, intervalDays: null, intervalHours: null, lastDoneDate: '', lastDoneHours: null, nextDueDate: '', nextDueHours: null }); }, 'AD added — fill in the details'); };
+    $$('[data-adng]').forEach(function (el) { el.onchange = function () { save(function (c) { var ad = c.ads[+el.dataset.adng]; ad.nonGrounding = el.checked; logEntry(c, 'AD ' + (ad.number || ad.desc || '') + (el.checked ? ' set non-grounding' : ' set grounding')); }); }; });
     $$('[data-adrm]').forEach(function (b) { b.onclick = function () { if (!confirm('Remove this AD from tracking?')) return; save(function (c) { var r = c.ads.splice(+b.dataset.adrm, 1)[0]; logEntry(c, 'AD removed ' + (r.number || '')); }); }; });
     $$('[data-addone]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = c.ads[+b.dataset.addone]; ad.lastDoneDate = today(); var cur = reading(c); if (cur != null) ad.lastDoneHours = cur; if (!ad.intervalMonths && !ad.intervalDays && !ad.intervalHours) { ad.nextDueDate = ''; ad.nextDueHours = null; ad.inactive = true; } logEntry(c, 'AD ' + (ad.number || '') + ' complied ' + today()); }, '✓ AD complied — next due rolled forward'); }; });
     // squawks

@@ -101,11 +101,14 @@ var PPAStatus = (function () {
     if (dueHrs != null && cur != null) { hLeft = dueHrs - cur; detail.push(hoursText(dueHrs) + ' h'); }
     if ((dLeft != null && dLeft < 0) || (hLeft != null && hLeft < 0)) st = 'over';
     else if ((dLeft != null && dLeft <= R.ads.warnDays) || (hLeft != null && hLeft <= R.ads.warnHours)) st = 'due';
+    var ngOver = false;
+    if (st === 'over' && (ad.nonGrounding || /non\s*-?\s*grounding/i.test(ad.desc || ''))) { st = 'due'; ngOver = true; }
     var overText = '';
     if (hLeft != null && (dLeft == null || hLeft * 1 < dLeft)) { value = hLeft < 0 ? '-' + hoursText(-hLeft) + 'h' : hoursText(hLeft) + 'h'; if (hLeft < 0) overText = hoursText(-hLeft) + ' hrs'; }
     else { value = dLeft < 0 ? '-' + (-dLeft) + 'd' : dLeft + 'd'; if (dLeft < 0) overText = (-dLeft) + ' days'; }
     return { state: st, value: value, overText: overText, dLeft: dLeft, hLeft: hLeft, dueDate: dueDate, dueHours: dueHrs,
-      detail: (ad.number || 'AD') + ' due ' + detail.join(' or ') + ' (whichever first)' };
+      nonGroundingOverdue: ngOver,
+      detail: (ngOver ? 'OVERDUE (non-grounding) — ' : '') + (ad.number || ad.desc || 'AD') + ' due ' + detail.join(' or ') + ' (whichever first)' + (ad.nonGrounding && !ngOver ? ' · non-grounding' : '') };
   }
 
   // Evaluate one aircraft. Returns { items:[...], overall:'grounded'|'due'|'ok', reasons:[...], ... }
@@ -145,7 +148,7 @@ var PPAStatus = (function () {
         if (!ads.length) { out.push(Object.assign(base, { state: 'none', value: '—', detail: 'No recurring ADs listed' })); return; }
         var evals = ads.map(function (ad) { var e = evalAD(ad, a, R, today); e.ad = ad; return e; });
         var w2 = evals.reduce(function (p, c) { return RANK[c.state] > RANK[p.state] ? c : (RANK[c.state] === RANK[p.state] && (c.dLeft != null && p.dLeft != null && c.dLeft < p.dLeft) ? c : p); });
-        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' ADs tracked' : ''), ads: evals }));
+        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, nonGroundingOverdue: !!w2.nonGroundingOverdue, detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' ADs tracked' : ''), ads: evals }));
       }
     });
 
@@ -159,7 +162,8 @@ var PPAStatus = (function () {
     if (reasons.length) overall = 'grounded';
     else {
       out.forEach(function (i) {
-        if (i.state === 'due') dueReasons.push(i.short + ' due in ' + i.value);
+        if (i.state === 'due' && i.nonGroundingOverdue) dueReasons.push(i.short + ' OVERDUE (non-grounding): ' + i.value);
+        else if (i.state === 'due') dueReasons.push(i.short + ' due in ' + i.value);
         if (i.state === 'missing') dueReasons.push(i.short + ': needs data');
       });
       if (dueReasons.length) overall = 'due';

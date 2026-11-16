@@ -343,10 +343,11 @@ var PPASettings = (function () {
             if (sameNum.length <= 1) return true;
             return String(x.desc || '').toLowerCase() === String(nAd.desc || '').toLowerCase();
           }
-          return !nAd.number && String(x.desc || '').toLowerCase() === String(nAd.desc || '').toLowerCase();
+          var ng = function (t) { return String(t || '').toLowerCase().replace(/\s*\(?\s*non\s*-?\s*grounding\s*\)?/g, '').trim(); };
+          return !nAd.number && ng(x.desc) === ng(nAd.desc);
         })[0];
         if (!hit) {
-          var add = { id: PPASample.uid(), number: nAd.number || '', desc: nAd.desc || '', intervalMonths: nAd.intervalMonths, intervalDays: nAd.intervalDays, intervalHours: nAd.intervalHours, lastDoneDate: nAd.lastDoneDate || '', lastDoneHours: nAd.lastDoneHours, nextDueDate: nAd.nextDueDate || '', nextDueHours: nAd.nextDueHours };
+          var add = { id: PPASample.uid(), number: nAd.number || '', desc: nAd.desc || '', intervalMonths: nAd.intervalMonths, intervalDays: nAd.intervalDays, intervalHours: nAd.intervalHours, lastDoneDate: nAd.lastDoneDate || '', lastDoneHours: nAd.lastDoneHours, nextDueDate: nAd.nextDueDate || '', nextDueHours: nAd.nextDueHours, nonGrounding: !!nAd.nonGrounding };
           ads.push(add); ch.push('AD ' + (nAd.number || nAd.desc));
         } else {
           var changed = false;
@@ -356,6 +357,7 @@ var PPASettings = (function () {
           ['lastDoneDate', 'nextDueDate', 'desc', 'number'].forEach(function (k) {
             if (nAd[k] && hit[k] !== nAd[k]) { hit[k] = nAd[k]; changed = true; }
           });
+          if (nAd.nonGrounding && !hit.nonGrounding) { hit.nonGrounding = true; changed = true; }
           if (changed) ch.push('AD ' + (nAd.number || nAd.desc));
         }
       });
