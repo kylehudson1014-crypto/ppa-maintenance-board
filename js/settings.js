@@ -293,13 +293,6 @@ var PPASettings = (function () {
   }
 
   function eqv(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-  function squawkDup(tail, text, date, list) {
-    var n = squashSq(text);
-    return (list || []).some(function (s) {
-      return (s.tail || '').toUpperCase().replace(/-/g, '') === tail && squashSq(s.text) === n && (!date || !s.createdAt || String(s.createdAt).slice(0, 10) === date);
-    });
-  }
-  function squashSq(t) { return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
 
   function ignored() { var l = st.settings.ignoreTails; if (!Array.isArray(l)) l = ['NB58RB']; return l.map(function (t) { return String(t).toUpperCase().replace(/[\s-]/g, ''); }).filter(Boolean); }
   function buildFspImport(parsed) {
@@ -366,13 +359,16 @@ var PPASettings = (function () {
         }
       });
       if (JSON.stringify(ads) !== JSON.stringify(a.ads || [])) a.ads = ads;
+      var pendingSq = [];
       var openSq = (f.openSquawks || []).filter(function (sq) {
-        var all = (st.squawks || []).concat(st.closedSquawks || []);
-        if (squawkDup(tail, sq.description, sq.date, all)) { warn.push(tail + ': skipped duplicate squawk "' + sq.description + '"'); return false; }
+        var all = (st.squawks || []).concat(st.closedSquawks || []).concat(squawkOps).concat(pendingSq);
+        var cand = { aircraftId: a.id, tail: a.tail, text: sq.description, date: sq.date, fspId: sq.id || '', status: 'open' };
+        if (S.isDuplicateSquawk(cand, all)) { warn.push(tail + ': skipped duplicate squawk "' + sq.description + '"'); return false; }
+        pendingSq.push(cand);
         return true;
       });
       openSq.forEach(function (sq) {
-        squawkOps.push({ aircraftId: a.id, tail: a.tail, text: sq.description, severity: sq.groundable ? 'grounding' : 'open', grounding: !!sq.groundable, status: 'open', reportedBy: sq.reportedBy || 'FSP import', createdAt: (sq.date || parsed.reportCreated || S.todayStr()) + 'T12:00:00' });
+        squawkOps.push({ aircraftId: a.id, tail: a.tail, text: sq.description, severity: sq.groundable ? 'grounding' : 'open', grounding: !!sq.groundable, status: 'open', reportedBy: sq.reportedBy || 'FSP import', createdAt: (sq.date || parsed.reportCreated || S.todayStr()) + 'T12:00:00', fspDate: sq.date || '', fspId: sq.id || '' });
         ch.push('open squawk');
       });
       ops.push({ a: a, isNew: !ex, changes: ch, squawks: openSq });
