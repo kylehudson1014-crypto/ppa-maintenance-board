@@ -138,14 +138,33 @@ var Store = (function () {
         createdAt: now(), applied: false
       };
       if (st.mode === 'demo') { doc.id = PPASample.uid(); st.flightReports = st.flightReports || []; st.flightReports.unshift(doc); demoSave(); return Promise.resolve(doc); }
-      return db.collection('flightReports').add(doc);
+      return db.collection('flightReports').add(doc).then(function (ref) { doc.id = ref.id; return doc; });
     },
-    markReportApplied: function (id) {
+    markReportSheetSent: function (id) {
       if (st.mode === 'demo') {
-        (st.flightReports || []).forEach(function (r) { if (r.id === id) r.applied = true; });
+        (st.flightReports || []).forEach(function (r) { if (r.id === id) r.sheetSent = true; });
         demoSave(); return Promise.resolve();
       }
-      return db.doc('flightReports/' + id).update({ applied: true });
+      return db.doc('flightReports/' + id).update({ sheetSent: true });
+    },
+    sendFlightLogToSheet: function (report, extra) {
+      extra = extra || {};
+      var url = ((st.settings && st.settings.flightLogSheetUrl) || '').trim();
+      var token = ((st.settings && st.settings.flightLogSheetToken) || '').trim();
+      if (!url) return Promise.resolve({ skipped: true });
+      var payload = PPAStatus.flightLogSheetPayload(report, {
+        token: token,
+        location: extra.location || '',
+        squawkText: extra.squawkText || '',
+        tachPhoto: extra.tachPhoto || '',
+        hobbsPhoto: extra.hobbsPhoto || ''
+      });
+      var body = JSON.stringify(payload);
+      // Apps Script web-app POSTs are capped around 50 MB; keep a tighter cap so a pair of JPEGs stays practical.
+      if (body.length > 8 * 1024 * 1024) return Promise.resolve({ sent: false, error: 'The meter photos are too large to send to the Sheet. The report is still saved on the board.' });
+      return fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        .then(function () { return { sent: true }; })
+        .catch(function (e) { return { sent: false, error: (e && e.message) || String(e) }; });
     },
     isDenied: function (e) {
       if (!e) return false;

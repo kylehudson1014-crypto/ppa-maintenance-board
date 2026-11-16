@@ -25,7 +25,8 @@ var PPAViews = (function () {
   var QTS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
   function emptyDraft() {
     return { loc: remember('sqLoc') || '', ac: remember('sqAc') || '', oil: 'no', qts: 1,
-      tachStart: '', tachEnd: '', hobbsStart: '', hobbsEnd: '', txt: '', sev: 'open', name: remember('sqName') || '', student: '', acFilled: '' };
+      tachStart: '', tachEnd: '', hobbsStart: '', hobbsEnd: '', txt: '', sev: 'open', name: remember('sqName') || '', student: '', acFilled: '',
+      snaps: { tach: null, hobbs: null } };
   }
   function pullForm() {
     if (!sqDraft) sqDraft = emptyDraft();
@@ -71,6 +72,7 @@ var PPAViews = (function () {
       sqDraft.hobbsStart = h == null ? '' : h;
       sqDraft.tachEnd = '';
       sqDraft.hobbsEnd = '';
+      sqDraft.snaps = { tach: null, hobbs: null };
       sqDraft.acFilled = id;
     }
     if ($('#ts')) { $('#ts').value = sqDraft.tachStart; $('#te').value = sqDraft.tachEnd; }
@@ -81,7 +83,7 @@ var PPAViews = (function () {
       var bits = [];
       if (S.hasTach(a)) bits.push('Tach ' + S.hoursLabel(S.meterReading(a, 'tach')));
       bits.push('Hobbs ' + S.hoursLabel(S.meterReading(a, 'hobbs')));
-      hint.textContent = 'Board now shows ' + bits.join(' · ') + '. Start is filled in for you — enter the ending times.';
+      hint.textContent = 'Board now shows ' + bits.join(' · ') + '. Start is filled in for you — enter or snap the ending times.';
     }
     updTimes();
   }
@@ -103,40 +105,26 @@ var PPAViews = (function () {
     var who = esc(r.reportedBy || r.reporterEmail || 'CFI') + (r.student ? ' / student ' + esc(r.student) : '');
     return (dt ? dt + ' · ' : '') + who + (bits.length ? ' · ' + bits.join(' · ') : '');
   }
-  function pendingHtml(a) {
-    var r = S.latestUnapplied(st.flightReports, a.id);
-    if (!r) return '';
-    var bits = [];
-    if (r.tachEnd != null) bits.push('End Tach ' + S.hoursLabel(r.tachEnd));
-    if (r.hobbsEnd != null) bits.push('End Hobbs ' + S.hoursLabel(r.hobbsEnd));
-    if (r.oilAdded) bits.push('+' + r.oilQts + ' qt oil');
-    var more = S.reportsFor(st.flightReports, a.id).filter(function (x) { return !x.applied && x.id !== r.id && (x.tachEnd != null || x.hobbsEnd != null); }).length;
-    return '<div class="pend"><span><span class="chip s-due">CFI-reported</span> ' + (r.reportedBy ? esc(r.reportedBy) + (r.student ? ' / ' + esc(r.student) : '') + ' · ' : '') + bits.join(' · ') + (more ? ' · ' + more + ' more pending' : '') + ' <span class="sub" style="color:var(--mute)">Reference only — FSP is official. Apply only if you want these hours on the board.</span></span><button type="button" class="btn ok sm" data-apply="' + r.id + '">Apply to board</button></div>';
+  function oilCell(a) {
+    var o = S.oilSummary(st.flightReports, a, st.settings, st.aircraft);
+    var rate = o.rate ? (o.rate.rate + ' qt / 10 ' + (o.rate.meter === 'hobbs' ? 'Hobbs' : 'Tach') + ' hrs') : '';
+    var fsp = o.fspAt
+      ? (o.sinceFsp + ' qt since FSP')
+      : (o.allTime ? o.allTime + ' qt all time' : '');
+    return '<div class="oilcol" title="From CFI post-flight reports"><span>Oil (CFI reports)</span><b>' + (o.last30 ? o.last30 + ' qt' : 'none') + ' / 30d</b>' +
+      (fsp ? '<span>' + esc(fsp) + '</span>' : '') + (rate ? '<span>' + esc(rate) + '</span>' : '') + '</div>';
   }
-  function reportById(id) { return (st.flightReports || []).filter(function (r) { return r.id === id; })[0]; }
-  function applyReport(r) {
-    if (!r) return;
-    var a = clone(byId(r.aircraftId)); if (!a) return toast('Aircraft not found', true);
-    var changes = [], lowered = [];
-    ['tach', 'hobbs'].forEach(function (m) {
-      if (r[m + 'End'] == null || r[m + 'End'] === '') return;
-      var end = Number(r[m + 'End']), prev = reading(a, m);
-      if (prev != null && end < prev) lowered.push('New ' + meterName(m) + ' (' + end + ') is LOWER than before (' + prev + ')');
-      a[m] = end; a[m + 'Updated'] = today();
-      changes.push(meterName(m) + ' → ' + end);
-    });
-    if (lowered.length && !confirm(lowered.join('. ') + '. Save anyway?')) return;
-    if (r.oilAdded && r.oilQts) changes.push('oil +' + r.oilQts + ' qt');
-    if (changes.length) logEntry(a, 'Applied CFI report (' + (r.reportedBy || r.reporterEmail || '') + '): ' + changes.join(', '));
-    var saveP = changes.length ? Store.saveAircraft(a) : Promise.resolve();
-    saveP.then(function () { return Store.markReportApplied(r.id); })
-      .then(function () { toast('Applied ' + r.tail + ' report'); U.render(true); })
-      .catch(function (e) {
-        toast(Store.isDenied(e) ? 'Couldn’t apply the report. Publish the new Firestore rules in Firebase → Firestore → Rules, then try again.' : (e.message || String(e)), true);
-      });
-  }
-  function bindApply(root) {
-    $$('[data-apply]', root || document).forEach(function (b) { b.onclick = function () { applyReport(reportById(b.dataset.apply)); }; });
+  function oilDetail(a) {
+    var o = S.oilSummary(st.flightReports, a, st.settings, st.aircraft);
+    var fspDate = o.fspAt ? S.niceDate(String(o.fspAt).slice(0, 10)) : '';
+    var rate = o.rate
+      ? (o.rate.rate + ' qt per 10 ' + (o.rate.meter === 'hobbs' ? 'Hobbs' : 'Tach') + ' hrs (last 30 days, ' + o.rate.hours + ' hrs in CFI reports)')
+      : 'Not enough CFI-reported hours in the last 30 days to compute a rate';
+    return '<div class="oil-detail"><p class="sub" style="color:var(--mute)">Oil totals below are from CFI post-flight reports, not Flight Schedule Pro.</p>' +
+      '<div class="kv" style="grid-template-columns:auto 1fr"><span>Last 30 days</span><b>' + (o.last30 ? o.last30 + ' qt' : 'none') + '</b>' +
+      (o.fspAt ? '<span>Since last FSP import' + (fspDate ? ' (' + esc(fspDate) + ')' : '') + '</span><b>' + (o.sinceFsp ? o.sinceFsp + ' qt' : 'none') + '</b>' : '') +
+      '<span>All time (on this board)</span><b>' + (o.allTime ? o.allTime + ' qt' : 'none') + '</b>' +
+      '<span>Rate</span><b>' + esc(rate) + '</b></div></div>';
   }
 
   function squawk() {
@@ -146,8 +134,10 @@ var PPAViews = (function () {
       var a0 = byId(sqDone.aircraftId), e0 = a0 ? S.evaluate(a0, st.settings, st.squawks) : null;
       app.innerHTML = U.topbar('Report sent') + '<div class="wrap" style="max-width:640px">' + U.demoBanner() +
         (sqDone.reportError ? '<div class="banner red">' + esc(sqDone.reportError) + '</div>' : '') +
+        (sqDone.sheetError ? '<div class="banner">' + esc(sqDone.sheetError) + '</div>' : '') +
         '<div class="card"><h2>' + (sqDone.reportError && !sqDone.text ? 'Report not saved' : '✓ Recorded for ' + esc(sqDone.tail)) + '</h2>' +
         (sqDone.report && !sqDone.reportError ? '<p>' + reportLine(sqDone.report) + '</p>' : '') +
+        (sqDone.report && !sqDone.reportError ? '<p class="sub" style="color:var(--mute)">' + (sqDone.sheetSkipped ? 'Saved to the flight log on the board. Connect a billing Sheet in Settings to send rows there automatically.' : (sqDone.sheetError ? 'The report is saved on the board. An editor can resend it to the billing Sheet from Settings.' : 'Saved to the flight log. If the billing Sheet is connected, this row was also sent (an editor can resend it from Settings if it does not show up).')) + '</p>' : '') +
         (sqDone.text ? '<p>Squawk: "' + esc(sqDone.text) + '"' + (e0 ? ' — the board now shows <span class="ostat s-' + e0.overall + '">' + U.LABEL[e0.overall] + '</span>' : '') + '</p>' : '<p>No squawk filed.</p>') +
         '<button class="btn pri big" id="again">Submit another</button><br><br><a class="btn big ghost" href="#board">See fleet status</a></div></div>';
       $('#again').onclick = function () { sqDone = null; sqDraft = emptyDraft(); U.render(true); }; return;
@@ -160,9 +150,17 @@ var PPAViews = (function () {
     var qtsOpts = QTS.map(function (q) { return opt(q, q + ' quart' + (q === 1 ? '' : 's'), d.qts); }).join('');
     var showTach = !picked || S.hasTach(picked);
     var curHint = picked
-      ? 'Board now shows ' + (S.hasTach(picked) ? 'Tach ' + S.hoursLabel(S.meterReading(picked, 'tach')) + ' · ' : '') + 'Hobbs ' + S.hoursLabel(S.meterReading(picked, 'hobbs')) + '. Start is filled in for you — enter the ending times.'
+      ? 'Board now shows ' + (S.hasTach(picked) ? 'Tach ' + S.hoursLabel(S.meterReading(picked, 'tach')) + ' · ' : '') + 'Hobbs ' + S.hoursLabel(S.meterReading(picked, 'hobbs')) + '. Start is filled in for you — enter or snap the ending times.'
       : 'Pick an airplane and the starting Tach and Hobbs will fill in from the board.';
     if (picked && d.acFilled !== pick) fillStarts(pick, true);
+    function snapBits(kind) {
+      var snap = d.snaps && d.snaps[kind];
+      var cls = snap && !snap.confirmed ? ' snapfill' : (snap && snap.confirmed ? ' snapok' : '');
+      var warn = snap && snap.warning ? '<div class="ftime warn">' + esc(snap.warning) + '</div>' : '';
+      var conf = snap && !snap.confirmed ? '<div class="row" style="margin-top:6px"><button type="button" class="btn ok sm" data-confirm-snap="' + kind + '">Confirm reading</button><span class="sub" style="color:var(--mute)">Check the number (edit if needed) before you submit.</span></div>' : (snap && snap.confirmed ? '<div class="sub" style="color:var(--ok);margin-top:4px">Reading confirmed</div>' : '');
+      return { cls: cls, warn: warn, conf: conf };
+    }
+    var tSnap = snapBits('tach'), hSnap = snapBits('hobbs');
     app.innerHTML = U.topbar('Post-flight report', 'Replaces the paper log in the aircraft book') + '<div class="wrap" style="max-width:760px">' + U.demoBanner() +
       '<div class="card"><h2>1 · Which airplane?</h2><div class="chips" id="sl"><button type="button" data-l="" class="' + (!locF ? 'on' : '') + '">All</button>' + (st.settings.locations || []).map(function (l) { return '<button type="button" data-l="' + l.id + '" class="' + (locF === l.id ? 'on' : '') + '">' + esc(l.code) + '</button>'; }).join('') + '</div>' +
       '<div class="acpick">' + list.map(function (a) { return '<button type="button" data-id="' + a.id + '" class="s-' + ev[a.id].overall + (pick === a.id ? ' on' : '') + '"><b>' + esc(a.tail) + '</b><span>' + esc(a.type) + ' · ' + esc(U.locCode(a.location)) + '</span></button>'; }).join('') + '</div></div>' +
@@ -170,12 +168,16 @@ var PPAViews = (function () {
       '<div class="card"><h2>2 · Oil added?</h2><div class="oilpick"><button type="button" id="oil-no" class="' + (d.oil !== 'yes' ? 'on' : '') + '">No</button><button type="button" id="oil-yes" class="yes ' + (d.oil === 'yes' ? 'on' : '') + '">Yes</button></div>' +
       '<div id="qtswrap" class="' + (d.oil === 'yes' ? '' : 'hide') + '"><label class="f">How many quarts?<select id="oilqts">' + qtsOpts + '</select></label></div></div>' +
 
-      '<div class="card"><h2>3 · Tach and Hobbs</h2><p class="sub" id="curhrs" style="color:var(--mute)">' + esc(curHint) + '</p><p class="sub" style="color:var(--mute)">These are CFI-reported times for the paper-log replacement. Flight Schedule Pro stays the official record — they are not applied to the board unless an editor taps Apply.</p>' +
+      '<div class="card"><h2>3 · Tach and Hobbs</h2><p class="sub" id="curhrs" style="color:var(--mute)">' + esc(curHint) + '</p><p class="sub" style="color:var(--mute)">These times go to the flight log for billing. Flight Schedule Pro stays the official record, and they never change the hours on the board.</p>' +
       '<div class="meters">' +
       '<div id="tachwrap" class="' + (showTach ? '' : 'hide') + '"><div class="row"><label class="f">Start Tach<input type="number" step="0.1" inputmode="decimal" id="ts" value="' + esc(d.tachStart) + '"></label>' +
-      '<label class="f">End Tach<input type="number" step="0.1" inputmode="decimal" id="te" value="' + esc(d.tachEnd) + '"></label></div><div class="ftime" id="tflight"></div></div>' +
+      '<label class="f">End Tach<input type="number" step="0.1" inputmode="decimal" id="te" class="' + tSnap.cls.trim() + '" value="' + esc(d.tachEnd) + '"></label></div>' +
+      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaptach">📷 Snap meter</button><input type="file" id="snaptachfile" accept="image/*" capture="environment" class="hide"></div>' +
+      '<div class="ftime" id="tflight"></div>' + tSnap.warn + tSnap.conf + '</div>' +
       '<div><div class="row"><label class="f">Start Hobbs<input type="number" step="0.1" inputmode="decimal" id="hs" value="' + esc(d.hobbsStart) + '"></label>' +
-      '<label class="f">End Hobbs<input type="number" step="0.1" inputmode="decimal" id="he" value="' + esc(d.hobbsEnd) + '"></label></div><div class="ftime" id="hflight"></div></div>' +
+      '<label class="f">End Hobbs<input type="number" step="0.1" inputmode="decimal" id="he" class="' + hSnap.cls.trim() + '" value="' + esc(d.hobbsEnd) + '"></label></div>' +
+      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaphobbs">📷 Snap meter</button><input type="file" id="snaphobbsfile" accept="image/*" capture="environment" class="hide"></div>' +
+      '<div class="ftime" id="hflight"></div>' + hSnap.warn + hSnap.conf + '</div>' +
       '</div></div>' +
 
       '<div class="card"><h2>4 · Squawk? <span class="sub" style="font-weight:600;color:var(--mute)">optional — leave blank if nothing is wrong</span></h2><div class="chips" id="pre">' + (st.settings.squawkPresets || []).map(function (p) { return '<button type="button" data-p="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') + '</div>' +
@@ -204,7 +206,42 @@ var PPAViews = (function () {
     $('#oil-yes').onclick = function () { setOil(true); };
     $('#oil-no').onclick = function () { setOil(false); };
     if ($('#oilqts')) $('#oilqts').onchange = function () { sqDraft.qts = Number(this.value); };
-    ['ts', 'te', 'hs', 'he'].forEach(function (id) { var el = $('#' + id); if (el) el.oninput = updTimes; });
+['ts', 'te', 'hs', 'he'].forEach(function (id) {
+      var el = $('#' + id);
+      if (!el) return;
+      el.oninput = function () {
+        if (id === 'te' || id === 'he') {
+          var kind = id === 'te' ? 'tach' : 'hobbs';
+          if (sqDraft.snaps && sqDraft.snaps[kind]) sqDraft.snaps[kind].confirmed = true;
+        }
+        updTimes();
+      };
+    });
+    $$('[data-confirm-snap]').forEach(function (b) {
+      b.onclick = function () {
+        pullForm();
+        var kind = b.dataset.confirmSnap;
+        if (sqDraft.snaps && sqDraft.snaps[kind]) sqDraft.snaps[kind].confirmed = true;
+        U.render(true);
+      };
+    });
+    function bindSnap(kind, btnId, fileId) {
+      var btn = $('#' + btnId), file = $('#' + fileId);
+      if (!btn || !file) return;
+      btn.onclick = function () {
+        var acBtn = $('.acpick button.on');
+        if (!acBtn) return toast('Pick the airplane first', true);
+        file.click();
+      };
+      file.onchange = function () {
+        var f = file.files && file.files[0];
+        file.value = '';
+        if (!f) return;
+        openSnapReader(kind, f);
+      };
+    }
+    bindSnap('tach', 'snaptach', 'snaptachfile');
+    bindSnap('hobbs', 'snaphobbs', 'snaphobbsfile');
     $$('#pre button').forEach(function (b) { b.onclick = function () { var t = $('#txt'); t.value = t.value ? t.value + '; ' + b.dataset.p : b.dataset.p; }; });
     $$('input[name=sev]').forEach(function (r) { r.onchange = function () { $$('.sev').forEach(function (l) { l.classList.toggle('on', l.querySelector('input').checked); }); }; });
     $('#send').onclick = function () {
@@ -215,6 +252,13 @@ var PPAViews = (function () {
       var oilYes = sqDraft.oil === 'yes';
       var oilQts = oilYes ? Number(sqDraft.qts) : null;
       if (oilYes && QTS.indexOf(oilQts) < 0) return toast('Pick how many quarts of oil', true);
+      var pending = [];
+      ['tach', 'hobbs'].forEach(function (kind) {
+        if (!S.hasTach(a) && kind === 'tach') return;
+        var snap = sqDraft.snaps && sqDraft.snaps[kind];
+        if (snap && !snap.confirmed) pending.push(kind === 'tach' ? 'Tach' : 'Hobbs');
+      });
+      if (pending.length) return toast('Confirm or edit the snapped ' + pending.join(' and ') + ' reading first', true);
       function pair(kind, startEl, endEl, shown) {
         if (!shown) return { start: null, end: null };
         var s = parseHr(startEl.value), e = parseHr(endEl.value);
@@ -241,12 +285,21 @@ var PPAViews = (function () {
         oilAdded: oilYes, oilQts: oilQts,
         tachStart: tach.start, tachEnd: tach.end, hobbsStart: hobbs.start, hobbsEnd: hobbs.end
       };
+      var Ocr = window.PPAMeterOcr;
+      var tachPhoto = (sqDraft.snaps && sqDraft.snaps.tach && Ocr) ? Ocr.dataUrlToRawBase64(sqDraft.snaps.tach.photo) : '';
+      var hobbsPhoto = (sqDraft.snaps && sqDraft.snaps.hobbs && Ocr) ? Ocr.dataUrlToRawBase64(sqDraft.snaps.hobbs.photo) : '';
       var sendBtn = $('#send'); sendBtn.disabled = true; sendBtn.textContent = 'Submitting…';
       var squawkP = txt ? Store.addSquawk({ aircraftId: a.id, tail: a.tail, text: txt, severity: sv, reportedBy: nm }) : Promise.resolve(null);
       squawkP.then(function () {
-        return Store.addFlightReport(report).then(function () {
-          sqDone = { aircraftId: a.id, tail: a.tail, text: txt, report: report, reportError: '' };
-          sqDraft = null; U.render(true);
+        return Store.addFlightReport(report).then(function (saved) {
+          if (saved && saved.id) report.id = saved.id;
+          var extra = { location: U.locCode(a.location), squawkText: txt, tachPhoto: tachPhoto, hobbsPhoto: hobbsPhoto };
+          return Store.sendFlightLogToSheet(saved || report, extra).then(function (sheet) {
+            var sheetError = '', sheetSkipped = !!(sheet && sheet.skipped);
+            if (sheet && sheet.sent === false) sheetError = sheet.error || 'The billing Sheet could not be reached.';
+            sqDone = { aircraftId: a.id, tail: a.tail, text: txt, report: report, reportError: '', sheetError: sheetError, sheetSkipped: sheetSkipped };
+            sqDraft = null; U.render(true);
+          });
         }).catch(function (e) {
           sqDone = { aircraftId: a.id, tail: a.tail, text: txt, report: report, reportError: Store.isDenied(e) ? rulesDeniedMsg() : ((e && e.message) || String(e)) };
           sqDraft = null; U.render(true);
@@ -256,6 +309,66 @@ var PPAViews = (function () {
         toast((e && e.message) || String(e), true);
       });
     };
+  }
+
+  function openSnapReader(kind, file) {
+    var Ocr = window.PPAMeterOcr;
+    if (!Ocr) return toast('Meter reader failed to load. Refresh the page and try again.', true);
+    pullForm();
+    var a = byId(sqDraft.ac);
+    var label = kind === 'tach' ? 'Tach' : 'Hobbs';
+    var overlay = document.createElement('div');
+    overlay.className = 'sheet';
+    overlay.innerHTML = '<div class="in snapreader"><h2>📷 Snap ' + label + ' meter</h2>' +
+      '<p class="sub" style="color:var(--mute)">Frame the digits in the box. The board reads them on this phone — nothing is uploaded until you submit the report, and photos are not stored in the aircraft record.</p>' +
+      '<div class="snapstage"><canvas id="snapcan"></canvas><div id="snapcrop" class="snapcrop"></div></div>' +
+      '<div id="snapstat" class="ftime">Preparing photo…</div>' +
+      '<div class="row" style="margin-top:10px"><button type="button" class="btn ghost" id="snapx">Cancel</button></div></div>';
+    document.body.appendChild(overlay);
+    function close() { overlay.remove(); }
+    $('#snapx', overlay).onclick = close;
+    Ocr.downscaleBlob(file).then(function (img) {
+      var can = $('#snapcan', overlay);
+      can.width = img.width; can.height = img.height;
+      can.getContext('2d').drawImage(img.canvas, 0, 0);
+      var crop = Ocr.defaultCrop(img.width, img.height);
+      var box = $('#snapcrop', overlay);
+      var stage = $('.snapstage', overlay);
+      function placeBox() {
+        var r = can.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+        var sx = r.width / img.width, sy = r.height / img.height;
+        box.style.left = (r.left - sr.left + crop.x * sx) + 'px';
+        box.style.top = (r.top - sr.top + crop.y * sy) + 'px';
+        box.style.width = (crop.w * sx) + 'px';
+        box.style.height = (crop.h * sy) + 'px';
+      }
+      placeBox();
+      $('#snapstat', overlay).textContent = 'Reading digits…';
+      return Ocr.recognizeBest(img.canvas, crop).then(function (out) {
+        if (!out.parsed) {
+          $('#snapstat', overlay).textContent = 'Could not read a number. Try a closer, sharper photo of just the digits, or type the time yourself.';
+          var again = document.createElement('button');
+          again.type = 'button'; again.className = 'btn'; again.textContent = 'Type it instead';
+          again.onclick = close;
+          $('.row', overlay).appendChild(again);
+          return;
+        }
+        var value = out.parsed.value;
+        var current = a ? S.meterReading(a, kind) : null;
+        var chk = S.meterPlausibility(value, current);
+        var warn = chk && chk.warn ? chk.message : '';
+        sqDraft.snaps = sqDraft.snaps || { tach: null, hobbs: null };
+        sqDraft.snaps[kind] = { photo: img.dataUrl, value: value, confirmed: false, warning: warn, raw: out.parsed.raw };
+        if (kind === 'tach') sqDraft.tachEnd = value;
+        else sqDraft.hobbsEnd = value;
+        close();
+        U.render(true);
+        toast((warn ? 'Check this ' : 'Read ') + label + ': ' + value + (warn ? '' : ' — confirm or edit it'));
+      });
+    }).catch(function (e) {
+      close();
+      toast((e && e.message) || String(e), true);
+    });
   }
 
   // ================= EDIT LIST =================
@@ -275,7 +388,7 @@ var PPAViews = (function () {
             var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
             return '<div class="hmeter"><span>' + meterName(m) + '</span><input type="number" step="0.1" inputmode="decimal" data-hrs="' + a.id + '" data-meter="' + m + '" value="' + esc(hrsVal(a, m)) + '" title="Current ' + meterName(m) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + ';font-size:11px">' + (ud ? S.niceDate(ud) : 'never') + '</span></div>';
           }).join('') + '</div>' +
-          pendingHtml(a) +
+          oilCell(a) +
           '<div class="row">' + (sort === 'custom' ? '<button class="iconbtn" data-up="' + a.id + '">↑</button><button class="iconbtn" data-dn="' + a.id + '">↓</button>' : '') + '<a class="btn" href="#edit/' + a.id + '">Open ›</a></div></div>';
       }).join('') + (list.length ? '' : '<div class="card">No aircraft match. Tap + Add aircraft.</div>') + '<p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
     if ($('#dr')) $('#dr').onchange = function () { Store.setDemoRole(this.value); if (this.value === 'cfi') location.hash = '#squawk'; };
@@ -300,7 +413,6 @@ var PPAViews = (function () {
     }
     $$('[data-up]').forEach(function (b) { b.onclick = function () { move(b.dataset.up, -1); }; });
     $$('[data-dn]').forEach(function (b) { b.onclick = function () { move(b.dataset.dn, 1); }; });
-    bindApply();
   }
   function addSheet() {
     var d = document.createElement('div'); d.className = 'sheet';
@@ -330,21 +442,20 @@ var PPAViews = (function () {
   function getPath(o, path) { return path.split('.').reduce(function (x, k) { return x == null ? undefined : x[k]; }, o); }
   function reportsCard(id) {
     var recents = S.reportsFor(st.flightReports, id);
-    var oil30 = S.oilAddedLast30Days(st.flightReports, id);
+    var a = byId(id);
     var html = '<div class="card"><h2>CFI-reported flight log</h2>';
     if (st.reportsError) html += '<div class="banner red">' + esc(st.reportsError) + '</div>';
-    html += '<p class="sub" style="color:var(--mute)">Reference data from the post-flight report. Flight Schedule Pro remains the official hours record. Times are never applied automatically — use Apply to board only if you want the board to match a report.</p>';
-    html += '<p>Oil added in the last 30 days: <b>' + (oil30 ? oil30 + ' qt' : 'none') + '</b></p>';
+    html += '<p class="sub" style="color:var(--mute)">This log is the paper-book replacement for billing. Flight Schedule Pro stays the official hours record — CFI-reported times never change Tach or Hobbs on the board.</p>';
+    if (a) html += oilDetail(a);
     if (!recents.length) html += '<p class="sub" style="color:var(--mute)">No CFI reports yet for this aircraft.</p></div>';
     else html += recents.slice(0, 12).map(function (r) {
       var bits = [];
       if (r.tachEnd != null) bits.push('CFI-reported Tach ' + S.hoursLabel(r.tachStart) + ' → ' + S.hoursLabel(r.tachEnd));
       if (r.hobbsEnd != null) bits.push('CFI-reported Hobbs ' + S.hoursLabel(r.hobbsStart) + ' → ' + S.hoursLabel(r.hobbsEnd));
       bits.push(r.oilAdded ? ('Oil +' + r.oilQts + ' qt') : 'No oil added');
+      if (r.sheetSent) bits.push('sent to Sheet');
       return '<div class="reprow"><div class="meta"><span class="chip s-due">CFI-reported</span> <b>' + esc(reportDay(r)) + '</b> · ' + esc(r.reportedBy || r.reporterEmail || 'CFI') + (r.student ? ' / ' + esc(r.student) : '') +
-        '<div>' + bits.join(' · ') + '</div></div>' +
-        (r.applied ? '<span class="chip s-ok">Applied to board</span>' : '<button type="button" class="btn ok sm" data-apply="' + r.id + '">Apply to board</button>') +
-        '</div>';
+        '<div>' + bits.join(' · ') + '</div></div></div>';
     }).join('') + '</div>';
     return html;
   }
@@ -480,7 +591,6 @@ var PPAViews = (function () {
     $('#addsq').onclick = function () { var t = $('#nsq').value.trim(); if (!t) return; Store.addSquawk({ aircraftId: id, tail: a.tail, text: t, severity: $('#nsv').value, reportedBy: who() }).then(function () { toast('Squawk added'); U.render(true); }); };
     $('#inote').onchange = function () { Store.savePrivate(id, { internalNote: this.value }).then(function () { toast('Internal note saved'); }); };
     $('#del').onclick = function () { var t = prompt('Type ' + a.tail + ' to delete this aircraft and its data'); if (t && t.trim().toUpperCase() === a.tail.toUpperCase()) Store.deleteAircraft(id).then(function () { location.hash = '#edit'; }); };
-    bindApply();
   }
 
   return { squawk: squawk, editList: editList, editOne: editOne, settings: function () { PPASettings.view(); }, opt: opt, locOptions: locOptions, clone: clone };

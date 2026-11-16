@@ -19,7 +19,8 @@ var PPASample = (function () {
       rules: {},
       tv: { watermark: true, logo: true, pageSeconds: 15, sort: 'status', showSquawkText: true },
       public: { showSquawkText: true },
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      lastFspImportAt: ago(10) + 'T12:00:00Z'
     };
     function plane(o) {
       var p = { id: uid(), sample: true, meter: 'tach', ifr: true, forHire: true, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '',
@@ -60,13 +61,27 @@ var PPASample = (function () {
       { id: uid(), aircraftId: ac[10].id, tail: ac[10].tail, text: 'Intercom static in right seat', severity: 'open', grounding: false, status: 'open', reportedBy: 'Sample CFI', createdAt: ago(5) + 'T13:00:00Z' },
       { id: uid(), aircraftId: ac[10].id, tail: ac[10].tail, text: 'Seat cushion torn', severity: 'info', grounding: false, status: 'open', reportedBy: 'Sample CFI', createdAt: ago(9) + 'T13:00:00Z' }
     ];
+    var flightReports = [
+      { id: uid(), aircraftId: ac[0].id, tail: ac[0].tail, reporterEmail: 'cfi@example.com', reportedBy: 'Sample CFI', student: 'Alex Student',
+        oilAdded: true, oilQts: 1.5, tachStart: 4404.2, tachEnd: 4411.4, hobbsStart: 5112.0, hobbsEnd: 5119.6,
+        createdAt: ago(2) + 'T18:00:00Z', applied: false },
+      { id: uid(), aircraftId: ac[0].id, tail: ac[0].tail, reporterEmail: 'cfi@example.com', reportedBy: 'Sample CFI', student: 'Jordan Lee',
+        oilAdded: true, oilQts: 1, tachStart: 4396.8, tachEnd: 4404.2, hobbsStart: 5104.1, hobbsEnd: 5112.0,
+        createdAt: ago(8) + 'T16:30:00Z', applied: false },
+      { id: uid(), aircraftId: ac[0].id, tail: ac[0].tail, reporterEmail: 'cfi@example.com', reportedBy: 'Sample CFI', student: '',
+        oilAdded: true, oilQts: 2, tachStart: 4370.0, tachEnd: 4378.5, hobbsStart: 5076.0, hobbsEnd: 5084.2,
+        createdAt: ago(40) + 'T15:00:00Z', applied: false },
+      { id: uid(), aircraftId: ac[6].id, tail: ac[6].tail, reporterEmail: 'cfi@example.com', reportedBy: 'Sample CFI', student: 'Sam Patel',
+        oilAdded: true, oilQts: 1, tachStart: 3838.0, tachEnd: 3843.5, hobbsStart: 4480.0, hobbsEnd: 4486.1,
+        createdAt: ago(5) + 'T14:00:00Z', applied: false }
+    ];
     var alerts = { enabled: false, onGrounded: true, onDueSoon: true, onReturn: true, digest: false, digestHour: 7,
       recipients: [
         { id: uid(), name: 'Sample Mechanic', email: 'mechanic@example.com', group: 'Mechanic', locations: [], active: true },
         { id: uid(), name: 'Sample CFI (KECP)', email: 'cfi@example.com', group: 'CFI', locations: ['kecp'], active: true }
       ] };
     var priv = {}; priv[ac[9].id] = { internalNote: 'SAMPLE internal note: alternator P/N ordered from vendor, ETA 3 days. Do not show customers.' };
-    return { settings: settings, aircraft: ac, squawks: sq, closedSquawks: [], alerts: alerts, priv: priv,
+    return { settings: settings, aircraft: ac, squawks: sq, closedSquawks: [], flightReports: flightReports, alerts: alerts, priv: priv,
       roles: [{ email: 'owner@example.com', role: 'editor', name: 'Sample Owner' }, { email: 'cfi@example.com', role: 'cfi', name: 'Sample CFI' }] };
   }
   return { build: build, uid: uid };

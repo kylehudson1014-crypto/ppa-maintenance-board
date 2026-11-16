@@ -23,7 +23,7 @@ var PPASettings = (function () {
     var used = {}; st.aircraft.forEach(function (a) { used[a.location] = (used[a.location] || 0) + 1; });
     var base = location.href.split('#')[0];
     var html = U.topbar('Settings', 'Everything here is editable without code') + '<div class="wrap" style="max-width:980px">' + U.demoBanner() +
-      '<div class="chips"><button class="btn sm" data-jump="s-loc">Locations</button><button class="btn sm" data-jump="s-lists">Lists</button><button class="btn sm" data-jump="s-rules">Due rules</button><button class="btn sm" data-jump="s-tv">TV & public</button><button class="btn sm" data-jump="s-alerts">Alerts</button><button class="btn sm" data-jump="s-people">People</button><button class="btn sm" data-jump="s-data">CSV / data</button><button class="btn sm" data-jump="s-live">Go live</button></div>' +
+      '<div class="chips"><button class="btn sm" data-jump="s-loc">Locations</button><button class="btn sm" data-jump="s-lists">Lists</button><button class="btn sm" data-jump="s-rules">Due rules</button><button class="btn sm" data-jump="s-tv">TV & public</button><button class="btn sm" data-jump="s-alerts">Alerts</button><button class="btn sm" data-jump="s-people">People</button><button class="btn sm" data-jump="s-flog">Flight log Sheet</button><button class="btn sm" data-jump="s-data">CSV / data</button><button class="btn sm" data-jump="s-live">Go live</button></div>' +
 
       // locations
       '<div class="card" id="s-loc"><h2>Locations (schools / airports)</h2><div class="listed">' + (s.locations || []).map(function (l, i) {
@@ -77,6 +77,14 @@ var PPASettings = (function () {
       }).join('') + '</div><div class="row" style="margin-top:8px"><input type="email" id="npe" placeholder="email" style="flex:2"><input type="text" id="npn" placeholder="Name" style="flex:1"><select id="npr" style="max-width:220px">' + opt('cfi', 'CFI (squawks only)', 'cfi') + opt('editor', 'Owner / Mechanic (edit all)', '') + opt('alerts', 'Alert sender (robot)', '') + '</select><button class="btn" id="addpe">Add</button></div>' +
       '<p class="sub" style="color:var(--mute);font-size:12px">Also create the login in Firebase → Authentication → Add user (same email). Customers never need a login.</p></div>' +
 
+      // flight log sheet
+      '<div class="card" id="s-flog"><h2>Flight log Google Sheet (billing)</h2>' +
+      '<p class="sub" style="color:var(--mute)">CFI post-flight reports are saved on the board and, if you connect a Sheet, also appended for the secretary. Flight Schedule Pro stays the official hours record; CFI times never change Tach or Hobbs on the board.</p>' +
+      '<div class="row"><label class="f">Flight log Sheet web app URL<input type="url" id="flogurl" placeholder="https://script.google.com/macros/s/…/exec" value="' + esc(s.flightLogSheetUrl || '') + '"></label></div>' +
+      '<div class="row"><label class="f">Shared token<input type="text" id="flogtok" placeholder="Same value as SHARED_TOKEN in Apps Script" value="' + esc(s.flightLogSheetToken || '') + '" autocomplete="off"></label></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn pri" id="flogsave">Save Sheet connection</button><button class="btn" id="flogresend">Resend unsent to Sheet (' + (st.flightReports || []).filter(function (r) { return !r.sheetSent; }).length + ')</button></div>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">The URL and token are stored in public settings so the CFI page can send rows after submit. Anyone who can load the board can read them — treat the token as light protection only. The script still checks the token, validates fields, and ignores duplicate Report ID values. Meter photos (from Snap meter) go to a Drive folder named “PPA Flight Log Photos”; they are not stored in Firestore. Setup steps: create the Sheet in your personal Drive, Extensions → Apps Script, paste <code>apps-script/flight-log.gs</code>, set SHARED_TOKEN, deploy as a web app (Execute as me / Who has access: Anyone), then paste the URL and token here.</p></div>' +
+
       // data
       '<div class="card" id="s-data"><h2>CSV import / export & backup</h2><div class="row">' +
       '<label class="btn pri">⬆ Import FSP Maintenance Status Report<input type="file" id="fspin" accept=".pdf,application/pdf,.csv,text/csv" class="hide"></label>' +
@@ -84,7 +92,7 @@ var PPASettings = (function () {
       '<button class="btn" id="csvout">⬇ Export fleet CSV</button><button class="btn" id="flogout">⬇ Export flight log CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
       '<label class="btn">⬆ Import CSV<input type="file" id="csvin" accept=".csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="jsonout">⬇ Full backup (JSON)</button>' + (st.mode === 'demo' ? '<label class="btn">⬆ Restore backup<input type="file" id="jsonin" accept=".json" class="hide"></label><button class="btn" id="reset">Reload SAMPLE data</button><button class="btn bad" id="clear">Start empty (remove samples)</button>' : '') + '</div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Fastest refresh: in Flight Schedule Pro open Reports → Maintenance Status Report, print/save as PDF, then upload it here. You will get a preview (new / changed / unchanged) before anything is saved. Existing planes are never deleted. Closed squawks are skipped; only open squawks are added, and duplicates are not created. ADs, 50-hour oil, GPS database, and similar extras come in as tracked reminders. Tach and Hobbs stay separate; the 100-hour meter is set from the report (tach when the 100-hour time is tach-based). CSV import still works: matches by tail number (or FSP aircraft ID); blank cells never erase data. Export flight log CSV to reconcile CFI-reported Tach/Hobbs, oil, instructor and student names against Flight Schedule Pro — FSP stays the official hours record, and reported times are never applied automatically.</p>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Fastest refresh: in Flight Schedule Pro open Reports → Maintenance Status Report, print/save as PDF, then upload it here. You will get a preview (new / changed / unchanged) before anything is saved. Existing planes are never deleted. Closed squawks are skipped; only open squawks are added, and duplicates are not created. ADs, 50-hour oil, GPS database, and similar extras come in as tracked reminders. Tach and Hobbs stay separate; the 100-hour meter is set from the report (tach when the 100-hour time is tach-based) and are the official hours on this board. CSV import still works: matches by tail number (or FSP aircraft ID); blank cells never erase data. Export flight log CSV (or use the billing Sheet) to pull CFI-reported Tach/Hobbs, oil, instructor and student names — FSP stays the official hours record, and CFI times never update the board.</p>' +
       '<div id="imp">' + importPreview() + '</div></div>' +
 
       // live
@@ -136,6 +144,33 @@ var PPASettings = (function () {
       return [a.tail, a.type, U.locCode(a.location), a.meter, S.meterReading(a, 'tach'), S.meterUpdated(a, 'tach'), S.meterReading(a, 'hobbs'), S.meterUpdated(a, 'hobbs'), S.meterReading(a), S.meterUpdated(a), a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, d.vor, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
     }));
     download('ppa-fleet-' + S.todayStr() + '.csv', lines.join('\n'), 'text/csv');
+  }
+  function locFor(r) {
+    var a = st.aircraft.filter(function (x) { return x.id === r.aircraftId; })[0];
+    return a ? U.locCode(a.location) : '';
+  }
+  function resendUnsent() {
+    var url = ((st.settings && st.settings.flightLogSheetUrl) || '').trim();
+    if (!url) return toast('Add the Sheet web app URL first', true);
+    var unsent = (st.flightReports || []).filter(function (r) { return !r.sheetSent; });
+    if (!unsent.length) return toast('Nothing to resend');
+    var btn = $('#flogresend'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    var acc = { ok: 0, fail: 0 };
+    var chain = Promise.resolve();
+    unsent.forEach(function (r) {
+      chain = chain.then(function () {
+        return Store.sendFlightLogToSheet(r, { location: locFor(r) }).then(function (res) {
+          if (res && res.sent) {
+            return Store.markReportSheetSent(r.id).then(function () { acc.ok++; });
+          }
+          acc.fail++;
+        });
+      });
+    });
+    chain.then(function () {
+      toast('Sent ' + acc.ok + ' to the Sheet' + (acc.fail ? ', ' + acc.fail + ' failed' : '') + '. Duplicates are ignored by Report ID. Photos from the original submit are not stored, so a resend may have blank photo columns.');
+      U.render(true);
+    }).catch(function (e) { toast((e && e.message) || String(e), true); U.render(true); });
   }
   function exportFlightLog() {
     var head = ['date', 'tail', 'cfi', 'student', 'tach_start', 'tach_end', 'hobbs_start', 'hobbs_end', 'oil_added', 'oil_qts'];
@@ -226,6 +261,7 @@ var PPASettings = (function () {
   function applyImport() {
     var p = pendingImport; if (!p || !p.ops) return;
     var s = clone(st.settings); s.locations = p.locs; s.types = p.types;
+    if (p.source === 'fsp') s.lastFspImportAt = new Date().toISOString();
     var who = st.name || (st.user && st.user.email) || 'import';
     var label = p.source === 'fsp' ? 'FSP import' : 'CSV import';
     var toSave = p.ops.filter(function (o) { return o.isNew || (o.changes && o.changes.length); });
@@ -374,6 +410,12 @@ var PPASettings = (function () {
     // data
     $('#csvout').onclick = exportCSV;
     if ($('#flogout')) $('#flogout').onclick = exportFlightLog;
+    if ($('#flogsave')) $('#flogsave').onclick = function () {
+      var url = ($('#flogurl').value || '').trim(), token = ($('#flogtok').value || '').trim();
+      if (url && !/^https:\/\/script\.google\.com\//i.test(url)) return toast('The URL should be a Google Apps Script web app (script.google.com)', true);
+      saveS(function (s) { s.flightLogSheetUrl = url; s.flightLogSheetToken = token; }, 'Sheet connection saved');
+    };
+    if ($('#flogresend')) $('#flogresend').onclick = resendUnsent;
     $('#csvin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { pendingImport = buildImport(t); U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }); };
     if ($('#igts')) $('#igts').onclick = function () { var l = $('#igt').value.split(/[,\s]+/).map(function (t) { return t.trim().toUpperCase(); }).filter(Boolean); saveS(function (s) { s.ignoreTails = l; }, 'Ignore list saved'); };
     if ($('#fspin')) $('#fspin').onchange = function () {

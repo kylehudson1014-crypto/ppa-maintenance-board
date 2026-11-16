@@ -198,17 +198,88 @@ var PPAStatus = (function () {
     return !/redbird|aatd|batd|\bsimulator\b|\bflight sim\b|\bftd\b|training device/.test(t);
   }
 
-  function oilAddedLast30Days(reports, aircraftId, now) {
+  function reportTime(r) {
+    var at = Date.parse(r && r.createdAt || '');
+    return isNaN(at) ? null : at;
+  }
+
+  function oilAddedSince(reports, aircraftId, sinceIso, now) {
     reports = reports || [];
-    now = now || new Date();
-    var cut = now.getTime() - 30 * 86400000, sum = 0;
+    var cut = sinceIso ? Date.parse(sinceIso) : null;
+    if (cut != null && isNaN(cut)) cut = null;
+    var end = now ? now.getTime() : Infinity;
+    var sum = 0;
     reports.forEach(function (r) {
       if (aircraftId && r.aircraftId !== aircraftId) return;
       if (!r.oilAdded || r.oilQts == null) return;
-      var at = Date.parse(r.createdAt || '');
-      if (!isNaN(at) && at >= cut) sum += Number(r.oilQts) || 0;
+      var at = reportTime(r);
+      if (at == null) return;
+      if (cut != null && at < cut) return;
+      if (at > end) return;
+      sum += Number(r.oilQts) || 0;
     });
     return Math.round(sum * 10) / 10;
+  }
+
+  function oilAddedLast30Days(reports, aircraftId, now) {
+    now = now || new Date();
+    return oilAddedSince(reports, aircraftId, new Date(now.getTime() - 30 * 86400000).toISOString(), now);
+  }
+
+  function lastFspImportAt(settings, aircraft) {
+    var t = settings && settings.lastFspImportAt;
+    if (t && !isNaN(Date.parse(t))) return t;
+    var latest = null;
+    (aircraft || []).forEach(function (a) {
+      (a.log || []).forEach(function (e) {
+        if (!e || !e.at || !e.what) return;
+        if (!/^FSP import/i.test(String(e.what))) return;
+        if (!latest || String(e.at) > String(latest)) latest = e.at;
+      });
+    });
+    return latest;
+  }
+
+  function hoursFlownInRange(reports, aircraftId, meter, sinceMs, now) {
+    var end = now ? now.getTime() : Date.now();
+    var sum = 0, n = 0;
+    (reports || []).forEach(function (r) {
+      if (aircraftId && r.aircraftId !== aircraftId) return;
+      var at = reportTime(r);
+      if (at == null || at > end || (sinceMs != null && at < sinceMs)) return;
+      var a = r[meter + 'Start'], b = r[meter + 'End'];
+      if (a == null || b == null || a === '' || b === '') return;
+      a = Number(a); b = Number(b);
+      if (isNaN(a) || isNaN(b) || b < a) return;
+      sum += (b - a);
+      n++;
+    });
+    return { hours: Math.round(sum * 10) / 10, flights: n };
+  }
+
+  function oilRatePer10Hours(reports, aircraft, now) {
+    if (!aircraft) return null;
+    now = now || new Date();
+    var meter = hasTach(aircraft) ? 'tach' : 'hobbs';
+    var since = now.getTime() - 30 * 86400000;
+    var qts = oilAddedSince(reports, aircraft.id, new Date(since).toISOString(), now);
+    var flown = hoursFlownInRange(reports, aircraft.id, meter, since, now);
+    if (!flown.hours) return null;
+    return { meter: meter, qts: qts, hours: flown.hours, flights: flown.flights, rate: Math.round((qts / flown.hours) * 10 * 10) / 10 };
+  }
+
+  function oilSummary(reports, aircraft, settings, fleet, now) {
+    now = now || new Date();
+    var id = aircraft && aircraft.id;
+    var last30cut = new Date(now.getTime() - 30 * 86400000).toISOString();
+    var fspAt = lastFspImportAt(settings, fleet);
+    return {
+      last30: oilAddedSince(reports, id, last30cut, now),
+      allTime: oilAddedSince(reports, id, null, now),
+      sinceFsp: fspAt ? oilAddedSince(reports, id, fspAt, now) : null,
+      fspAt: fspAt,
+      rate: oilRatePer10Hours(reports, aircraft, now)
+    };
   }
 
   function reportsFor(reports, aircraftId) {
@@ -217,17 +288,56 @@ var PPAStatus = (function () {
     });
   }
 
-  function latestUnapplied(reports, aircraftId) {
-    var list = reportsFor(reports, aircraftId);
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i].applied && (list[i].tachEnd != null || list[i].hobbsEnd != null)) return list[i];
-    }
-    return null;
+  function flightLogSheetPayload(report, opt) {
+    opt = opt || {};
+    return {
+      token: opt.token || '',
+      reportId: report && report.id ? String(report.id) : '',
+      createdAt: (report && report.createdAt) || '',
+      tail: (report && report.tail) || '',
+      location: opt.location || '',
+      cfiName: (report && report.reportedBy) || '',
+      cfiEmail: (report && report.reporterEmail) || '',
+      student: (report && report.student) || '',
+      tachStart: report ? report.tachStart : null,
+      tachEnd: report ? report.tachEnd : null,
+      hobbsStart: report ? report.hobbsStart : null,
+      hobbsEnd: report ? report.hobbsEnd : null,
+      oilAdded: !!(report && report.oilAdded),
+      oilQts: report && report.oilAdded ? report.oilQts : null,
+      squawkText: opt.squawkText || '',
+      tachPhoto: opt.tachPhoto || '',
+      hobbsPhoto: opt.hobbsPhoto || ''
+    };
+  }
+
+  function meterDeltaHours(start, end) {
+    if (start == null || end == null || start === '' || end === '') return null;
+    var a = Number(start), b = Number(end);
+    if (isNaN(a) || isNaN(b)) return null;
+    return Math.round((b - a) * 10) / 10;
+  }
+
+  // Compare a snapped / typed meter reading to the aircraft's current board value.
+  // Returns null when there is nothing to check.
+  function meterPlausibility(reading, current, opt) {
+    opt = opt || {};
+    if (reading == null || reading === '' || isNaN(Number(reading))) return null;
+    var v = Number(reading);
+    if (current == null || current === '' || isNaN(Number(current))) return { ok: true, warn: false, message: '' };
+    var cur = Number(current);
+    var maxJump = opt.maxJump == null ? 10 : Number(opt.maxJump);
+    var delta = Math.round((v - cur) * 10) / 10;
+    if (v < cur) return { ok: false, warn: true, kind: 'low', delta: delta, message: 'This reading (' + v + ') is LOWER than the current board meter (' + cur + '). Check the photo or type the number yourself.' };
+    if (delta > maxJump) return { ok: true, warn: true, kind: 'high', delta: delta, message: 'This reading is ' + delta + ' hours above the current board meter (' + cur + '). Confirm it is right before you submit.' };
+    return { ok: true, warn: false, kind: 'ok', delta: delta, message: '' };
   }
 
   return { ITEMS: ITEMS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, alertEvents: alertEvents,
     todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText,
     hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters,
-    hasTach: hasTach, oilAddedLast30Days: oilAddedLast30Days, reportsFor: reportsFor, latestUnapplied: latestUnapplied };
+    hasTach: hasTach, oilAddedLast30Days: oilAddedLast30Days, oilAddedSince: oilAddedSince, lastFspImportAt: lastFspImportAt,
+    hoursFlownInRange: hoursFlownInRange, oilRatePer10Hours: oilRatePer10Hours, oilSummary: oilSummary, reportsFor: reportsFor,
+    flightLogSheetPayload: flightLogSheetPayload, meterDeltaHours: meterDeltaHours, meterPlausibility: meterPlausibility };
 })();
 if (typeof module !== 'undefined') module.exports = PPAStatus;
