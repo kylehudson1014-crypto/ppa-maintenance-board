@@ -311,6 +311,7 @@ var PPASettings = (function () {
       (f.doubts || []).forEach(function (d) { warn.push(d); });
       var tail = (f.tail || '').toUpperCase().replace(/\s/g, '');
       if (ignored().indexOf(tail.replace(/-/g, '')) >= 0) { warn.push(tail + ' skipped (on the ignore list in Settings).'); return; }
+      if (/redbird|aatd|batd|\bsimulator\b|\bflight sim\b|\bftd\b|training device/i.test(String((f.type || '') + ' ' + (raw.model || raw.make || raw.description || '') + ' ' + tail))) { warn.push(tail + ' skipped (simulator, not an aircraft).'); return; }
       var ex = st.aircraft.filter(function (a) { return tail && a.tail.toUpperCase().replace(/-/g, '') === tail.replace(/-/g, ''); })[0];
       var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, hoursUpdated: '', tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '', ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
       var ch = [];
