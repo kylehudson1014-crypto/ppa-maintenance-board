@@ -508,16 +508,17 @@ var PPAViews = (function () {
 
       reportsCard(id) +
 
-      '<div class="card"><h2>A 1 A T E D</h2>' +
+      '<div class="card"><h2>A 1 A T E D 50</h2>' +
       dateItem('annual', 'Annual — last done') +
       itemRow('hundred', '<label class="f">Last 100-hr done at (' + esc(S.meterOf(a)) + ')' + fld('last100', 'number', ' step="0.1" inputmode="decimal"') + '</label>', '<button class="btn ok" data-done="hundred">✓ Done at ' + esc(reading(a) == null ? '?' : reading(a)) + '</button>') +
       dateItem('pitot', 'Altimeter/pitot-static (91.411) — last done') +
       dateItem('xpdr', 'Transponder (91.413) — last done') +
       itemRow('elt', '<div class="row"><label class="f">ELT inspection — last done' + fld('dates.elt', 'date') + '</label><label class="f">ELT battery expires' + fld('dates.eltBattery', 'date') + '</label></div>', '<button class="btn ok" data-done="elt">✓ Inspected today</button>') +
       itemRow('ads', '<span class="sub" style="color:var(--mute)">' + adList.length + ' item(s) below' + (ignoredN ? ' (' + ignoredN + ' ignored)' : '') + '. The worst tracked one sets this color.</span>', '') +
+      itemRow('oil50', '<span class="sub" style="color:var(--mute)">50-hr oil change (non-grounding by default). Edit it, mark it complied, or ignore it in the ADs &amp; tracked reminders card below.</span>', '') +
       '<p class="sub" style="color:var(--mute);font-size:12px">Calendar-month items are due through the last day of the month (e.g. annual done Mar 10 → due Mar 31 next year). Yellow thresholds are in Settings. 100-hr: the 10-hour overfly allowance (91.409(b)) is info only and never extends the due on this board.</p></div>' +
 
-      '<div class="card"><h2>D · ADs &amp; tracked reminders</h2><p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">Includes the 50-hr oil change (non-grounding). Tap <b>Ignore</b> to stop tracking an item without deleting it; FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.map(function (k) {
+      '<div class="card"><h2>D · ADs &amp; tracked reminders (+ 50 · oil change)</h2><p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">The 50-hr oil change is edited here but shows as its own <b>50</b> letter (non-grounding unless you uncheck the box). Tap <b>Ignore</b> to stop tracking an item without deleting it; FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.map(function (k) {
         var ad = adList[k], ign = S.isIgnoredAD(ad), ng = ad.nonGrounding || (S.isOilChange(ad) && ad.nonGrounding !== false);
         var ae = ign ? null : (it.ads.ads || []).filter(function (x) { return x.ad.id === ad.id; })[0];
         var unit = ad.intervalMonths ? 'months' : ad.intervalDays ? 'days' : '';
