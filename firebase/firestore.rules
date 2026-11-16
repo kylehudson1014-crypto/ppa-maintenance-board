@@ -1,7 +1,8 @@
 rules_version = '2';
 // PPA Maintenance Board — Firestore security rules.
 // Public (TV, customers): read aircraft, open squawks and public settings only.
-// CFI: + create a squawk.   Editor (owner/mechanic): everything.   Alerts robot: + read alert settings.
+// CFI: + create a squawk and a post-flight report (instructor, optional student, oil / Tach / Hobbs).
+// Editor (owner/mechanic): everything.   Alerts robot: + read alert settings.
 // Roles live in /roles/{lower-case email}. The first editor is added by hand in the Firebase console.
 service cloud.firestore {
   match /databases/{db}/documents {
@@ -11,6 +12,31 @@ service cloud.firestore {
     function role() { return signedIn() && exists(roleDoc()) ? get(roleDoc()).data.role : ''; }
     function isEditor() { return role() == 'editor'; }
     function canSquawk() { return role() in ['editor', 'cfi']; }
+
+    function numOrNull(v) { return v == null || v is number; }
+    function meterPair(s, e) {
+      return numOrNull(s) && numOrNull(e)
+        && (s == null || (s >= 0 && s <= 100000))
+        && (e == null || (e >= 0 && e <= 100000))
+        && (s == null || e == null || e >= s);
+    }
+    function validFlightReport() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['aircraftId', 'tail', 'reporterEmail', 'reportedBy', 'student', 'oilAdded', 'oilQts', 'tachStart', 'tachEnd', 'hobbsStart', 'hobbsEnd', 'createdAt', 'applied'])
+        && d.keys().hasOnly(['aircraftId', 'tail', 'reporterEmail', 'reportedBy', 'student', 'oilAdded', 'oilQts', 'tachStart', 'tachEnd', 'hobbsStart', 'hobbsEnd', 'createdAt', 'applied'])
+        && d.aircraftId is string && d.aircraftId.size() > 0 && d.aircraftId.size() <= 40
+        && exists(/databases/$(db)/documents/aircraft/$(d.aircraftId))
+        && d.tail is string && d.tail.size() > 0 && d.tail.size() <= 20
+        && d.reporterEmail is string && d.reporterEmail == myEmail()
+        && d.reportedBy is string && d.reportedBy.size() > 0 && d.reportedBy.size() <= 80
+        && d.student is string && d.student.size() <= 80
+        && d.oilAdded is bool
+        && ((!d.oilAdded && d.oilQts == null) || (d.oilAdded && d.oilQts is number && d.oilQts in [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]))
+        && meterPair(d.tachStart, d.tachEnd)
+        && meterPair(d.hobbsStart, d.hobbsEnd)
+        && d.createdAt is string && d.createdAt.size() >= 10 && d.createdAt.size() <= 40
+        && d.applied == false;
+    }
 
     match /config/public { allow read: if true; allow write: if isEditor(); }
     match /config/alerts { allow read: if isEditor() || role() == 'alerts'; allow write: if isEditor(); }
@@ -35,6 +61,11 @@ service cloud.firestore {
         && request.resource.data.reportedBy is string && request.resource.data.reportedBy.size() <= 80
         && exists(/databases/$(db)/documents/aircraft/$(request.resource.data.aircraftId)));
       allow update, delete: if isEditor();
+    }
+
+    match /flightReports/{id} {
+      allow read, update, delete: if isEditor();
+      allow create: if canSquawk() && validFlightReport();
     }
 
     match /{path=**} { allow read, write: if false; }

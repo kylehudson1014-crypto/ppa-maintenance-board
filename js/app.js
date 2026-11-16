@@ -55,8 +55,8 @@
     var who = st.mode === 'live' ? (st.user ? esc(st.user.email) + ' · ' + esc(st.role) + ' <a href="#logout">Sign out</a>' : '<a href="#login">Staff sign in</a>') : 'DEMO mode';
     return '<div class="topbar"><div class="logo-plate"><img src="img/ppa-logo.png" alt="Patriot Pilot Academy"></div><div><h1>' + esc(title) + '</h1><div class="sub">' + (sub || 'Patriot Pilot Academy · Maintenance Board') + '</div></div><div class="sp"></div>' +
       (st.mode === 'live' && !Store.can('squawk') ? '<nav class="nav row">' + n('#board', 'Fleet') + (st.user ? '' : n('#login', 'Staff sign in')) + '</nav>' :
-      st.mode === 'live' && !Store.can('edit') ? '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Squawk') + '</nav>' :
-      '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Squawk') + n('#edit', 'Edit') + n('#settings', 'Settings') + n('#tv', 'TV') + '</nav>') + '<div class="sub who">' + who + '</div></div>';
+      st.mode === 'live' && !Store.can('edit') ? '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Report') + '</nav>' :
+      '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Report') + n('#edit', 'Edit') + n('#settings', 'Settings') + n('#tv', 'TV') + '</nav>') + '<div class="sub who">' + who + '</div></div>';
   }
   function demoBanner() {
     if (st.mode !== 'demo') return st.error ? '<div class="banner red">Connection problem: ' + esc(st.error) + '</div>' : '';
@@ -69,7 +69,7 @@
       '<div class="home">' +
       '<a href="#tv"><b>📺 TV display</b><span>Full-screen board for the lobby or dispatch. Auto-refresh, no controls.</span></a>' +
       '<a href="#board"><b>📱 Fleet status</b><span>Read-only view for customers, renters and CFIs.</span></a>' +
-      '<a href="#squawk"><b>⚑ Report a squawk</b><span>Quick form for any CFI. 30 seconds.</span></a>' +
+      '<a href="#squawk"><b>⚑ Post-flight report</b><span>Oil, Tach/Hobbs, and an optional squawk. Any CFI.</span></a>' +
       '<a href="#edit"><b>🔧 Edit fleet</b><span>Owner and mechanic: update hours, mark items done, clear squawks.</span></a>' +
       '<a href="#settings"><b>⚙️ Settings</b><span>Locations, lists, due thresholds, alerts, CSV import/export.</span></a>' +
       '</div><p class="disclaimer">' + DISCLAIMER + '</p></div>';

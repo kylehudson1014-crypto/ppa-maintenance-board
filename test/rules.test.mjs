@@ -54,5 +54,37 @@ await t('alerts bot reads alerts config', assertSucceeds(getDoc(doc(bot, 'config
 await t('alerts bot CANNOT write alerts', assertFails(setDoc(doc(bot, 'config/alerts'), { enabled: true })));
 await t('alerts bot CANNOT write aircraft', assertFails(setDoc(doc(bot, 'aircraft/a1'), { tail: 'X' })));
 await t('unknown collection blocked', assertFails(setDoc(doc(owner, 'junk/x'), { a: 1 })));
+
+const fr = (o = {}) => Object.assign({
+  aircraftId: 'a1', tail: 'N1', reporterEmail: 'cfi@x.com', reportedBy: 'Pat CFI', student: 'Alex Student',
+  oilAdded: true, oilQts: 1.5, tachStart: 100, tachEnd: 101.2, hobbsStart: 200, hobbsEnd: 201.4,
+  createdAt: new Date().toISOString(), applied: false
+}, o);
+await t('public CANNOT read flightReports', assertFails(getDocs(collection(pub, 'flightReports'))));
+await t('public CANNOT create flightReport', assertFails(addDoc(collection(pub, 'flightReports'), fr())));
+await t('stranger CANNOT create flightReport', assertFails(addDoc(collection(stranger, 'flightReports'), fr({ reporterEmail: 'nobody@x.com' }))));
+await t('CFI creates valid flightReport', assertSucceeds(addDoc(collection(cfi, 'flightReports'), fr())));
+await t('CFI creates oil-only flightReport', assertSucceeds(addDoc(collection(cfi, 'flightReports'), fr({ oilAdded: false, oilQts: null, tachStart: null, tachEnd: null, hobbsStart: null, hobbsEnd: null }))));
+await t('CFI creates report with blank student', assertSucceeds(addDoc(collection(cfi, 'flightReports'), fr({ student: '' }))));
+await t('CFI CANNOT set student over 80 chars', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ student: 'x'.repeat(81) }))));
+await t('CFI CANNOT omit student field', assertFails(addDoc(collection(cfi, 'flightReports'), (({student, ...o}) => o)(fr()))));
+await t('CFI CANNOT create applied report', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ applied: true }))));
+await t('CFI CANNOT add extra fields to report', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ hack: 1 }))));
+await t('CFI CANNOT spoof reporter email', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ reporterEmail: 'owner@x.com' }))));
+await t('CFI CANNOT report unknown aircraft', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ aircraftId: 'nope' }))));
+await t('CFI CANNOT set end before start', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ tachEnd: 90 }))));
+await t('CFI CANNOT set invalid oil quarts', assertFails(addDoc(collection(cfi, 'flightReports'), fr({ oilQts: 9 }))));
+await t('CFI CANNOT read flightReports', assertFails(getDocs(collection(cfi, 'flightReports'))));
+
+await env.withSecurityRulesDisabled(async (c) => {
+  await setDoc(doc(c.firestore(), 'flightReports/r1'), fr({ reportedBy: 'Seed' }));
+});
+await t('CFI CANNOT apply a report', assertFails(updateDoc(doc(cfi, 'flightReports/r1'), { applied: true })));
+await t('CFI CANNOT delete a report', assertFails(deleteDoc(doc(cfi, 'flightReports/r1'))));
+await t('editor reads flightReports', assertSucceeds(getDoc(doc(owner, 'flightReports/r1'))));
+await t('editor applies flightReport', assertSucceeds(updateDoc(doc(owner, 'flightReports/r1'), { applied: true })));
+await t('editor deletes flightReport', assertSucceeds(deleteDoc(doc(owner, 'flightReports/r1'))));
+await t('editor creates flightReport', assertSucceeds(addDoc(collection(owner, 'flightReports'), fr({ reporterEmail: 'owner@x.com', reportedBy: 'Owner' }))));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup(); process.exit(fail ? 1 : 0);

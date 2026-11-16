@@ -81,10 +81,10 @@ var PPASettings = (function () {
       '<div class="card" id="s-data"><h2>CSV import / export & backup</h2><div class="row">' +
       '<label class="btn pri">⬆ Import FSP Maintenance Status Report<input type="file" id="fspin" accept=".pdf,application/pdf,.csv,text/csv" class="hide"></label>' +
       '<div class="row" style="margin-top:8px;gap:8px;align-items:center"><label class="sub" for="igt">Skip on FSP import (tails, comma-separated):</label><input id="igt" style="flex:1;min-width:160px" value="' + esc(ignored().join(', ')) + '"><button class="btn" id="igts">Save</button></div>' +
-      '<button class="btn" id="csvout">⬇ Export fleet CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
+      '<button class="btn" id="csvout">⬇ Export fleet CSV</button><button class="btn" id="flogout">⬇ Export flight log CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
       '<label class="btn">⬆ Import CSV<input type="file" id="csvin" accept=".csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="jsonout">⬇ Full backup (JSON)</button>' + (st.mode === 'demo' ? '<label class="btn">⬆ Restore backup<input type="file" id="jsonin" accept=".json" class="hide"></label><button class="btn" id="reset">Reload SAMPLE data</button><button class="btn bad" id="clear">Start empty (remove samples)</button>' : '') + '</div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Fastest refresh: in Flight Schedule Pro open Reports → Maintenance Status Report, print/save as PDF, then upload it here. You will get a preview (new / changed / unchanged) before anything is saved. Existing planes are never deleted. Closed squawks are skipped; only open squawks are added, and duplicates are not created. ADs, 50-hour oil, GPS database, and similar extras come in as tracked reminders. Tach and Hobbs stay separate; the 100-hour meter is set from the report (tach when the 100-hour time is tach-based). CSV import still works: matches by tail number (or FSP aircraft ID); blank cells never erase data.</p>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Fastest refresh: in Flight Schedule Pro open Reports → Maintenance Status Report, print/save as PDF, then upload it here. You will get a preview (new / changed / unchanged) before anything is saved. Existing planes are never deleted. Closed squawks are skipped; only open squawks are added, and duplicates are not created. ADs, 50-hour oil, GPS database, and similar extras come in as tracked reminders. Tach and Hobbs stay separate; the 100-hour meter is set from the report (tach when the 100-hour time is tach-based). CSV import still works: matches by tail number (or FSP aircraft ID); blank cells never erase data. Export flight log CSV to reconcile CFI-reported Tach/Hobbs, oil, instructor and student names against Flight Schedule Pro — FSP stays the official hours record, and reported times are never applied automatically.</p>' +
       '<div id="imp">' + importPreview() + '</div></div>' +
 
       // live
@@ -136,6 +136,22 @@ var PPASettings = (function () {
       return [a.tail, a.type, U.locCode(a.location), a.meter, S.meterReading(a, 'tach'), S.meterUpdated(a, 'tach'), S.meterReading(a, 'hobbs'), S.meterUpdated(a, 'hobbs'), S.meterReading(a), S.meterUpdated(a), a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, d.vor, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
     }));
     download('ppa-fleet-' + S.todayStr() + '.csv', lines.join('\n'), 'text/csv');
+  }
+  function exportFlightLog() {
+    var head = ['date', 'tail', 'cfi', 'student', 'tach_start', 'tach_end', 'hobbs_start', 'hobbs_end', 'oil_added', 'oil_qts'];
+    var rows = (st.flightReports || []).slice().sort(function (a, b) { return String(a.createdAt || '').localeCompare(String(b.createdAt || '')); });
+    var lines = [head.join(',')].concat(rows.map(function (r) {
+      return [
+        (function () { if (!r.createdAt) return ''; var d = new Date(r.createdAt); return isNaN(d.getTime()) ? String(r.createdAt).slice(0, 10) : S.todayStr(d); })(),
+        r.tail || '',
+        r.reportedBy || r.reporterEmail || '',
+        r.student || '',
+        r.tachStart, r.tachEnd, r.hobbsStart, r.hobbsEnd,
+        r.oilAdded ? 'yes' : 'no',
+        r.oilAdded ? r.oilQts : ''
+      ].map(csvCell).join(',');
+    }));
+    download('ppa-flight-log-' + S.todayStr() + '.csv', lines.join('\n'), 'text/csv');
   }
   function download(name, text, type) { var b = new Blob([text], { type: type }); var u = URL.createObjectURL(b); var a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 500); }
   function buildImport(text) {
@@ -357,6 +373,7 @@ var PPASettings = (function () {
     $('#addpe').onclick = function () { var e = $('#npe').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return toast('Enter a valid email', true); Store.saveRole({ email: e, name: $('#npn').value.trim(), role: $('#npr').value }).then(function () { toast('Added'); U.render(true); }).catch(function (x) { toast(x.message, true); }); };
     // data
     $('#csvout').onclick = exportCSV;
+    if ($('#flogout')) $('#flogout').onclick = exportFlightLog;
     $('#csvin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { pendingImport = buildImport(t); U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }); };
     if ($('#igts')) $('#igts').onclick = function () { var l = $('#igt').value.split(/[,\s]+/).map(function (t) { return t.trim().toUpperCase(); }).filter(Boolean); saveS(function (s) { s.ignoreTails = l; }, 'Ignore list saved'); };
     if ($('#fspin')) $('#fspin').onchange = function () {
@@ -365,10 +382,10 @@ var PPASettings = (function () {
     };
     if ($('#impgo')) $('#impgo').onclick = applyImport;
     if ($('#impno')) $('#impno').onclick = function () { pendingImport = null; U.render(true); };
-    $('#jsonout').onclick = function () { download('ppa-maint-backup-' + S.todayStr() + '.json', JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, priv: st.priv, roles: st.roles }, null, 1), 'application/json'); };
+    $('#jsonout').onclick = function () { download('ppa-maint-backup-' + S.todayStr() + '.json', JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports || [], priv: st.priv, roles: st.roles }, null, 1), 'application/json'); };
     if ($('#jsonin')) $('#jsonin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { try { var d = JSON.parse(t); if (!d.aircraft || !d.settings) throw new Error('Not a board backup'); localStorage.setItem('ppa-mb-demo-v1', JSON.stringify(d)); location.reload(); } catch (e) { toast(e.message, true); } }); };
     if ($('#reset')) $('#reset').onclick = function () { if (confirm('Replace everything on this device with fresh SAMPLE data?')) { Store.resetDemo(); toast('Sample data reloaded'); } };
     if ($('#clear')) $('#clear').onclick = function () { if (confirm('Remove all sample aircraft and squawks on this device? (Settings stay.)')) { Store.clearDemo(); toast('Empty board ready'); } };
   }
-  return { view: view, buildImport: buildImport, buildFspImport: buildFspImport, parseCSV: parseCSV };
+  return { view: view, buildImport: buildImport, buildFspImport: buildFspImport, parseCSV: parseCSV, exportFlightLog: exportFlightLog };
 })();

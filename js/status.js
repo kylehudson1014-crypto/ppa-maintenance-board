@@ -189,8 +189,45 @@ var PPAStatus = (function () {
     return ev;
   }
 
+  // True when this aircraft has a tachometer. Sims (Redbird, AATD, etc.) typically do not.
+  function hasTach(a) {
+    if (!a) return true;
+    if (a.hasTach === false || a.noTach === true) return false;
+    if (a.hasTach === true) return true;
+    var t = String((a.type || '') + ' ' + (a.tail || '')).toLowerCase();
+    return !/redbird|aatd|batd|\bsimulator\b|\bflight sim\b|\bftd\b|training device/.test(t);
+  }
+
+  function oilAddedLast30Days(reports, aircraftId, now) {
+    reports = reports || [];
+    now = now || new Date();
+    var cut = now.getTime() - 30 * 86400000, sum = 0;
+    reports.forEach(function (r) {
+      if (aircraftId && r.aircraftId !== aircraftId) return;
+      if (!r.oilAdded || r.oilQts == null) return;
+      var at = Date.parse(r.createdAt || '');
+      if (!isNaN(at) && at >= cut) sum += Number(r.oilQts) || 0;
+    });
+    return Math.round(sum * 10) / 10;
+  }
+
+  function reportsFor(reports, aircraftId) {
+    return (reports || []).filter(function (r) { return r.aircraftId === aircraftId; }).slice().sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+  }
+
+  function latestUnapplied(reports, aircraftId) {
+    var list = reportsFor(reports, aircraftId);
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].applied && (list[i].tachEnd != null || list[i].hobbsEnd != null)) return list[i];
+    }
+    return null;
+  }
+
   return { ITEMS: ITEMS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, alertEvents: alertEvents,
     todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText,
-    hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters };
+    hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters,
+    hasTach: hasTach, oilAddedLast30Days: oilAddedLast30Days, reportsFor: reportsFor, latestUnapplied: latestUnapplied };
 })();
 if (typeof module !== 'undefined') module.exports = PPAStatus;

@@ -124,3 +124,17 @@ table.prev{width:100%;border-collapse:collapse;font-size:13px}table.prev td,tabl
  .wrap{padding:12px}
  .tile .tail{font-size:24px}
 }
+
+.oilpick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 12px}
+.oilpick button{min-height:64px;font-size:20px;font-weight:800;border-radius:14px;border:2px solid var(--line);background:var(--panel);cursor:pointer}
+.oilpick button.on{border-color:#3f82ea;background:#12305e}
+.oilpick button.on.yes{border-color:#18a352;background:#0f6b35}
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:560px){.meters{grid-template-columns:1fr}}
+.ftime{font-size:13px;font-weight:700;color:#9ecbff;min-height:18px;margin-top:4px}
+.ftime.bad{color:#ff8a95}
+.ftime.warn{color:var(--due)}
+.pend{grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#0d2240;border:1px solid #2a5aa0;border-radius:10px;padding:8px 10px;font-size:14px}
+.pend span{flex:1;min-width:160px}
+.reprow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#0b1730;border:1px solid #20345a;border-radius:10px;padding:10px;margin-bottom:8px}
+.reprow .meta{flex:1;font-size:14px;color:#d3def0;min-width:180px}

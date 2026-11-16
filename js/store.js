@@ -2,8 +2,8 @@
 var Store = (function () {
   var KEY = 'ppa-mb-demo-v1';
   var cfg = (window.PPA_CONFIG && window.PPA_CONFIG.firebaseConfig) || null;
-  var st = { mode: cfg ? 'live' : 'demo', ready: false, settings: null, alerts: null, aircraft: [], squawks: [], closedSquawks: [], priv: {}, roles: [],
-    user: null, role: 'public', name: '', fromCache: false, error: '', lastSync: null };
+  var st = { mode: cfg ? 'live' : 'demo', ready: false, settings: null, alerts: null, aircraft: [], squawks: [], closedSquawks: [], flightReports: [], priv: {}, roles: [],
+    user: null, role: 'public', name: '', fromCache: false, error: '', reportsError: '', lastSync: null };
   var listeners = [];
   function emit() { st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
   function now() { return new Date().toISOString(); }
@@ -16,11 +16,11 @@ var Store = (function () {
     var d = raw ? JSON.parse(raw) : PPASample.build();
     if (!raw) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
     st.settings = d.settings; st.alerts = d.alerts; st.aircraft = d.aircraft; st.squawks = d.squawks; st.closedSquawks = d.closedSquawks || [];
-    st.priv = d.priv || {}; st.roles = d.roles || [];
+    st.flightReports = d.flightReports || []; st.priv = d.priv || {}; st.roles = d.roles || [];
     var r = localStorage.getItem('ppa-mb-demo-role') || 'editor'; st.role = r; st.user = { email: 'demo@example.com' }; st.name = r === 'cfi' ? 'Demo CFI' : 'Demo Owner';
   }
   function demoSave() {
-    localStorage.setItem(KEY, JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, priv: st.priv, roles: st.roles }));
+    localStorage.setItem(KEY, JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports, priv: st.priv, roles: st.roles }));
     emit();
   }
 
@@ -60,6 +60,17 @@ var Store = (function () {
               privUnsubs.push(db.doc('config/alerts').onSnapshot(function (s) { st.alerts = s.exists ? s.data() : emptyAlerts(); emit(); }, err));
               privUnsubs.push(db.collection('roles').onSnapshot(function (q) { st.roles = q.docs.map(function (d) { return Object.assign({ email: d.id }, d.data()); }); emit(); }, err));
               privUnsubs.push(db.collection('squawks').where('status', '==', 'closed').onSnapshot(function (q) { st.closedSquawks = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); emit(); }, err));
+              privUnsubs.push(db.collection('flightReports').onSnapshot(function (q) {
+                st.flightReports = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+                st.reportsError = '';
+                emit();
+              }, function (e) {
+                console.error(e);
+                st.reportsError = (e && e.code) === 'permission-denied'
+                  ? 'Post-flight reports are not available yet. Publish the new Firestore rules (firebase/firestore.rules) in the Firebase console, then refresh.'
+                  : ((e && e.message) || String(e));
+                emit();
+              }));
             }
             emit();
           }).catch(function (e) { st.role = 'none'; err(e); });
@@ -99,7 +110,7 @@ var Store = (function () {
       var id = a.id; delete a.id; return db.doc('aircraft/' + id).set(a).then(function () { a.id = id; return a; });
     },
     deleteAircraft: function (id) {
-      if (st.mode === 'demo') { st.aircraft = st.aircraft.filter(function (x) { return x.id !== id; }); delete st.priv[id]; st.squawks = st.squawks.filter(function (s) { return s.aircraftId !== id; }); demoSave(); return Promise.resolve(); }
+      if (st.mode === 'demo') { st.aircraft = st.aircraft.filter(function (x) { return x.id !== id; }); delete st.priv[id]; st.squawks = st.squawks.filter(function (s) { return s.aircraftId !== id; }); st.flightReports = (st.flightReports || []).filter(function (r) { return r.aircraftId !== id; }); demoSave(); return Promise.resolve(); }
       return Promise.all([db.doc('aircraft/' + id).delete(), db.doc('aircraftPrivate/' + id).delete()]);
     },
     savePrivate: function (id, data) {
@@ -111,6 +122,35 @@ var Store = (function () {
         status: 'open', reportedBy: String(s.reportedBy || '').slice(0, 80), createdAt: now() };
       if (st.mode === 'demo') { doc.id = PPASample.uid(); st.squawks.push(doc); demoSave(); return Promise.resolve(doc); }
       return db.collection('squawks').add(doc);
+    },
+    addFlightReport: function (s) {
+      var oilAdded = !!s.oilAdded;
+      var doc = {
+        aircraftId: s.aircraftId, tail: s.tail,
+        reporterEmail: String(s.reporterEmail || (st.user && st.user.email) || (st.mode === 'demo' ? 'demo@example.com' : '')).trim().toLowerCase(),
+        reportedBy: String(s.reportedBy || '').slice(0, 80),
+        student: String(s.student || '').slice(0, 80),
+        oilAdded: oilAdded, oilQts: oilAdded ? Number(s.oilQts) : null,
+        tachStart: s.tachStart == null || s.tachStart === '' ? null : Number(s.tachStart),
+        tachEnd: s.tachEnd == null || s.tachEnd === '' ? null : Number(s.tachEnd),
+        hobbsStart: s.hobbsStart == null || s.hobbsStart === '' ? null : Number(s.hobbsStart),
+        hobbsEnd: s.hobbsEnd == null || s.hobbsEnd === '' ? null : Number(s.hobbsEnd),
+        createdAt: now(), applied: false
+      };
+      if (st.mode === 'demo') { doc.id = PPASample.uid(); st.flightReports = st.flightReports || []; st.flightReports.unshift(doc); demoSave(); return Promise.resolve(doc); }
+      return db.collection('flightReports').add(doc);
+    },
+    markReportApplied: function (id) {
+      if (st.mode === 'demo') {
+        (st.flightReports || []).forEach(function (r) { if (r.id === id) r.applied = true; });
+        demoSave(); return Promise.resolve();
+      }
+      return db.doc('flightReports/' + id).update({ applied: true });
+    },
+    isDenied: function (e) {
+      if (!e) return false;
+      var c = e.code || e.name || '';
+      return c === 'permission-denied' || /permission[- ]denied/i.test(String(e.message || e));
     },
     updateSquawk: function (s) {
       s = clone(s); s.grounding = s.severity === 'grounding';
@@ -141,11 +181,12 @@ var Store = (function () {
       return db.doc('roles/' + email).delete();
     },
     resetDemo: function () { localStorage.removeItem(KEY); demoLoad(); emit(); },
-    clearDemo: function () { var d = PPASample.build(); d.aircraft = []; d.squawks = []; d.priv = {}; localStorage.setItem(KEY, JSON.stringify(d)); demoLoad(); emit(); },
+    clearDemo: function () { var d = PPASample.build(); d.aircraft = []; d.squawks = []; d.flightReports = []; d.priv = {}; localStorage.setItem(KEY, JSON.stringify(d)); demoLoad(); emit(); },
     lastUpdated: function () {
       var t = [];
       st.aircraft.forEach(function (a) { if (a.updatedAt) t.push(a.updatedAt); });
       st.squawks.forEach(function (s) { if (s.createdAt) t.push(s.createdAt); });
+      (st.flightReports || []).forEach(function (r) { if (r.createdAt) t.push(r.createdAt); });
       if (st.settings && st.settings.updatedAt) t.push(st.settings.updatedAt);
       t.sort(); return t.length ? new Date(t[t.length - 1]) : null;
     }
