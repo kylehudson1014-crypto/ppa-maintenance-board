@@ -48,10 +48,10 @@ function doGet() {
 /** Main entry used by tests and doPost. */
 function appendFlightLog(raw) {
   var data = parseAndValidate(raw);
-  var sh = getOrCreateSheet();
-  if (findReportRow(sh, data.reportId) >= 0) {
+  if (reportExistsAnywhere_(data.reportId)) {
     return { ok: true, duplicate: true, reportId: data.reportId };
   }
+  var sh = getOrCreateSheet(data.createdAt);
   var tachUrl = savePhoto_(data.tachPhoto, data.tail, 'tach', data.reportId);
   var hobbsUrl = savePhoto_(data.hobbsPhoto, data.tail, 'hobbs', data.reportId);
   sh.appendRow(rowFrom(data, tachUrl, hobbsUrl));
@@ -105,8 +105,14 @@ function parseAndValidate(raw) {
   };
 }
 
+function whenOf_(createdAt) {
+  var n = Number(createdAt);
+  var when = createdAt ? new Date(isNaN(n) ? createdAt : n) : new Date();
+  return isNaN(when.getTime()) ? new Date() : when;
+}
+
 function rowFrom(data, tachUrl, hobbsUrl) {
-  var when = data.createdAt ? new Date(data.createdAt) : new Date();
+  var when = whenOf_(data.createdAt);
   if (isNaN(when.getTime())) when = new Date();
   var submitted = Utilities.formatDate(when, TZ, 'yyyy-MM-dd HH:mm');
   var flightDate = Utilities.formatDate(when, TZ, 'yyyy-MM-dd');
@@ -121,11 +127,29 @@ function rowFrom(data, tachUrl, hobbsUrl) {
   ];
 }
 
-function getOrCreateSheet() {
+// One tab per month, named like "2026-11 Nov", from the flight's date. Newest month goes first.
+function monthTabName_(createdAt) {
+  return Utilities.formatDate(whenOf_(createdAt), TZ, 'yyyy-MM MMM');
+}
+
+function isLogTab_(name) { return name === TAB || /^\d{4}-\d{2} [A-Za-z]{3}$/.test(name); }
+
+function reportExistsAnywhere_(reportId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return false;
+  var tabs = ss.getSheets();
+  for (var i = 0; i < tabs.length; i++) {
+    if (isLogTab_(tabs[i].getName()) && findReportRow(tabs[i], reportId) >= 0) return true;
+  }
+  return false;
+}
+
+function getOrCreateSheet(createdAt) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error('This script must be bound to a Google Sheet (open it with Extensions → Apps Script from the Sheet).');
-  var sh = ss.getSheetByName(TAB);
-  if (!sh) sh = ss.insertSheet(TAB);
+  var name = monthTabName_(createdAt);
+  var sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name, 0); }
   var last = sh.getLastRow();
   if (last < 1) {
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);

@@ -49,13 +49,16 @@ const sheet = {
   appendRow: (r) => { rows.push(r.slice()); }
 };
 
+let sheetName = null;
+sheet.getName = () => sheetName;
 const ctx = {
   console, JSON, Date, Math, Number, String, Object, Array, Error, encodeURIComponent,
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) },
   SpreadsheetApp: {
     getActiveSpreadsheet: () => ({
-      getSheetByName: (n) => (n === 'Flight Log' && rows.length ? sheet : null),
-      insertSheet: (n) => { rows = []; return sheet; }
+      getSheetByName: (n) => (n === sheetName && rows.length ? sheet : null),
+      getSheets: () => (rows.length ? [sheet] : []),
+      insertSheet: (n) => { rows = []; sheetName = n; return sheet; }
     })
   },
   Utilities: {
@@ -65,6 +68,7 @@ const ctx = {
         hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
       }).formatToParts(d);
       const g = k => parts.find(p => p.type === k).value;
+      if (f === 'yyyy-MM MMM') return `${g('year')}-${g('month')} ` + new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short' }).format(d);
       if (f === 'yyyy-MM-dd') return `${g('year')}-${g('month')}-${g('day')}`;
       if (f === 'yyyy-MM-dd HH:mm') return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}`;
       return d.toISOString();
@@ -156,3 +160,7 @@ mustThrow('huge photo rejected', () => {
 
 if (failed) { console.error(failed + ' failed'); process.exit(1); }
 console.log('flight-log tests passed');
+
+// Monthly tab: rows go in a tab named for the flight's month (America/Chicago).
+if (!/^\d{4}-\d{2} [A-Z][a-z]{2}$/.test(String(sheetName))) { console.error('FAIL monthly tab name', sheetName); process.exit(1); }
+console.log('ok monthly tab', sheetName);
