@@ -82,7 +82,11 @@ var PPASample = (function () {
       ] };
     var priv = {}; priv[ac[9].id] = { internalNote: 'SAMPLE internal note: alternator P/N ordered from vendor, ETA 3 days. Do not show customers.' };
     return { settings: settings, aircraft: ac, squawks: sq, closedSquawks: [], flightReports: flightReports, alerts: alerts, priv: priv,
-      roles: [{ email: 'owner@example.com', role: 'editor', name: 'Sample Owner' }, { email: 'cfi@example.com', role: 'cfi', name: 'Sample CFI' }] };
+      roles: [{ email: 'owner@example.com', role: 'editor', name: 'Sample Owner' }, { email: 'cfi@example.com', role: 'cfi', name: 'Sample CFI' }],
+      accessRequests: [
+        { email: 'jordan@example.com', name: 'Jordan Lee', requestedAt: ago(1) + 'T18:10:00Z', status: 'pending' },
+        { email: 'sam.cfi@example.com', name: 'Sam Rivera', requestedAt: ago(2) + 'T12:00:00Z', status: 'pending' }
+      ] };
   }
   return { build: build, uid: uid };
 })();

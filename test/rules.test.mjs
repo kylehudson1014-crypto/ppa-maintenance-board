@@ -86,5 +86,28 @@ await t('editor applies flightReport', assertSucceeds(updateDoc(doc(owner, 'flig
 await t('editor deletes flightReport', assertSucceeds(deleteDoc(doc(owner, 'flightReports/r1'))));
 await t('editor creates flightReport', assertSucceeds(addDoc(collection(owner, 'flightReports'), fr({ reporterEmail: 'owner@x.com', reportedBy: 'Owner' }))));
 
+
+const ar = (o = {}) => Object.assign({
+  name: 'Jordan Lee', email: 'nobody@x.com', requestedAt: new Date().toISOString(), status: 'pending'
+}, o);
+await t('public CANNOT read accessRequests', assertFails(getDocs(collection(pub, 'accessRequests'))));
+await t('public CANNOT create accessRequest', assertFails(setDoc(doc(pub, 'accessRequests/nobody@x.com'), ar())));
+await t('stranger CANNOT create request under another email', assertFails(setDoc(doc(stranger, 'accessRequests/cfi@x.com'), ar({ email: 'cfi@x.com' }))));
+await t('stranger CANNOT spoof email field', assertFails(setDoc(doc(stranger, 'accessRequests/nobody@x.com'), ar({ email: 'owner@x.com' }))));
+await t('stranger CANNOT create already-approved request', assertFails(setDoc(doc(stranger, 'accessRequests/nobody@x.com'), ar({ status: 'approved' }))));
+await t('stranger CANNOT add extra fields to request', assertFails(setDoc(doc(stranger, 'accessRequests/nobody@x.com'), ar({ hack: 1 }))));
+await t('stranger CANNOT use an empty name', assertFails(setDoc(doc(stranger, 'accessRequests/nobody@x.com'), ar({ name: '' }))));
+await t('stranger creates own pending accessRequest', assertSucceeds(setDoc(doc(stranger, 'accessRequests/nobody@x.com'), ar())));
+await t('stranger reads own accessRequest', assertSucceeds(getDoc(doc(stranger, 'accessRequests/nobody@x.com'))));
+await t('stranger CANNOT list all accessRequests', assertFails(getDocs(collection(stranger, 'accessRequests'))));
+await t('stranger CANNOT update own request', assertFails(updateDoc(doc(stranger, 'accessRequests/nobody@x.com'), { status: 'approved' })));
+await t('stranger CANNOT write their own role', assertFails(setDoc(doc(stranger, 'roles/nobody@x.com'), { role: 'cfi', name: 'Jordan Lee' })));
+await t('CFI CANNOT read someone else\'s accessRequest', assertFails(getDoc(doc(cfi, 'accessRequests/nobody@x.com'))));
+await t('editor lists accessRequests', assertSucceeds(getDocs(collection(owner, 'accessRequests'))));
+await t('editor reads a request', assertSucceeds(getDoc(doc(owner, 'accessRequests/nobody@x.com'))));
+await t('editor approves a request', assertSucceeds(updateDoc(doc(owner, 'accessRequests/nobody@x.com'), { status: 'approved', approvedRole: 'cfi', reviewedAt: new Date().toISOString(), reviewedBy: 'owner@x.com' })));
+await t('editor can deny a request', assertSucceeds(updateDoc(doc(owner, 'accessRequests/nobody@x.com'), { status: 'denied', reviewedAt: new Date().toISOString(), reviewedBy: 'owner@x.com' })));
+await t('editor CANNOT change the request email', assertFails(updateDoc(doc(owner, 'accessRequests/nobody@x.com'), { email: 'other@x.com', status: 'denied' })));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup(); process.exit(fail ? 1 : 0);

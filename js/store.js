@@ -2,7 +2,7 @@
 var Store = (function () {
   var KEY = 'ppa-mb-demo-v1';
   var cfg = (window.PPA_CONFIG && window.PPA_CONFIG.firebaseConfig) || null;
-  var st = { mode: cfg ? 'live' : 'demo', ready: false, settings: null, alerts: null, aircraft: [], squawks: [], closedSquawks: [], flightReports: [], priv: {}, roles: [],
+  var st = { mode: cfg ? 'live' : 'demo', ready: false, settings: null, alerts: null, aircraft: [], squawks: [], closedSquawks: [], flightReports: [], priv: {}, roles: [], accessRequests: [], myAccessRequest: null,
     user: null, role: 'public', name: '', fromCache: false, error: '', reportsError: '', lastSync: null };
   var listeners = [];
   function emit() { st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
@@ -16,11 +16,11 @@ var Store = (function () {
     var d = raw ? JSON.parse(raw) : PPASample.build();
     if (!raw) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
     st.settings = d.settings; st.alerts = d.alerts; st.aircraft = d.aircraft; st.squawks = d.squawks; st.closedSquawks = d.closedSquawks || [];
-    st.flightReports = d.flightReports || []; st.priv = d.priv || {}; st.roles = d.roles || [];
+    st.flightReports = d.flightReports || []; st.priv = d.priv || {}; st.roles = d.roles || []; st.accessRequests = d.accessRequests || []; st.myAccessRequest = null;
     var r = localStorage.getItem('ppa-mb-demo-role') || 'editor'; st.role = r; st.user = { email: 'demo@example.com' }; st.name = r === 'cfi' ? 'Demo CFI' : 'Demo Owner';
   }
   function demoSave() {
-    localStorage.setItem(KEY, JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports, priv: st.priv, roles: st.roles }));
+    localStorage.setItem(KEY, JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports, priv: st.priv, roles: st.roles, accessRequests: st.accessRequests || [] }));
     emit();
   }
 
@@ -71,7 +71,19 @@ var Store = (function () {
                   : ((e && e.message) || String(e));
                 emit();
               }));
+              privUnsubs.push(db.collection('accessRequests').onSnapshot(function (q) {
+                st.accessRequests = q.docs.map(function (d) { return Object.assign({ email: d.id }, d.data()); });
+                emit();
+              }, function (e) {
+                console.error(e);
+                st.accessRequests = st.accessRequests || [];
+                emit();
+              }));
             }
+            privUnsubs.push(db.doc('accessRequests/' + normEmail(u.email)).onSnapshot(function (s) {
+              st.myAccessRequest = s.exists ? Object.assign({ email: s.id }, s.data()) : null;
+              emit();
+            }, function () { st.myAccessRequest = null; emit(); }));
             emit();
           }).catch(function (e) { st.role = 'none'; err(e); });
         });
@@ -103,6 +115,73 @@ var Store = (function () {
     login: function (email, pw) { return auth.signInWithEmailAndPassword(email.trim(), pw); },
     logout: function () { return auth ? auth.signOut() : Promise.resolve(); },
     resetPassword: function (email) { return auth.sendPasswordResetEmail(email.trim()); },
+    signupError: function (err) {
+      var c = (err && err.code) || '';
+      if (c === 'auth/operation-not-allowed' || c === 'auth/admin-restricted-operation') {
+        return 'Sign-up is turned off in Firebase. An editor needs to turn it on: Firebase console → Authentication → Settings → User actions → enable “Enable create (sign-up)”.';
+      }
+      if (c === 'auth/email-already-in-use') return 'That email already has an account. Sign in, or use Forgot password.';
+      if (c === 'auth/weak-password') return 'Password must be at least 6 characters.';
+      if (c === 'auth/invalid-email') return 'That email doesn\'t look right.';
+      return (err && err.message) || String(err || 'Could not create the account');
+    },
+    requestAccess: function (name, email, password) {
+      var e = normEmail(email);
+      var nm = String(name || '').trim().slice(0, 80);
+      if (!nm) return Promise.reject(new Error('Name is required'));
+      if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return Promise.reject(new Error('Enter a valid email'));
+      if (!password || String(password).length < 6) return Promise.reject(new Error('Password must be at least 6 characters'));
+      var doc = { name: nm, email: e, requestedAt: now(), status: 'pending' };
+      if (st.mode === 'demo') {
+        st.accessRequests = (st.accessRequests || []).filter(function (x) { return x.email !== e; });
+        st.accessRequests.push(doc);
+        st.user = { email: e }; st.role = 'none'; st.name = nm; st.myAccessRequest = doc;
+        demoSave(); emit();
+        return Promise.resolve(doc);
+      }
+      return auth.createUserWithEmailAndPassword(e, password).then(function () {
+        return db.doc('accessRequests/' + e).set(doc);
+      }).then(function () {
+        st.myAccessRequest = doc; emit(); return doc;
+      }).catch(function (err) {
+        throw new Error(api.signupError(err));
+      });
+    },
+    approveAccess: function (email, role) {
+      var e = normEmail(email);
+      var r = role === 'editor' ? 'editor' : 'cfi';
+      var req = ((st.accessRequests || []).filter(function (x) { return x.email === e; })[0]) || st.myAccessRequest || {};
+      var name = req.name || '';
+      var reviewed = { status: 'approved', approvedRole: r, reviewedAt: now(), reviewedBy: (st.user && st.user.email) || '' };
+      if (st.mode === 'demo') {
+        st.roles = (st.roles || []).filter(function (x) { return x.email !== e; });
+        st.roles.push({ email: e, role: r, name: name });
+        st.accessRequests = (st.accessRequests || []).map(function (x) { return x.email === e ? Object.assign({}, x, reviewed) : x; });
+        demoSave(); return Promise.resolve();
+      }
+      return db.doc('roles/' + e).set({ role: r, name: name }).then(function () {
+        return db.doc('accessRequests/' + e).set({
+          name: name, email: e, requestedAt: req.requestedAt || now(),
+          status: 'approved', approvedRole: r, reviewedAt: reviewed.reviewedAt, reviewedBy: reviewed.reviewedBy
+        }, { merge: true });
+      });
+    },
+    denyAccess: function (email) {
+      var e = normEmail(email);
+      var req = ((st.accessRequests || []).filter(function (x) { return x.email === e; })[0]) || {};
+      var reviewed = { status: 'denied', reviewedAt: now(), reviewedBy: (st.user && st.user.email) || '' };
+      if (st.mode === 'demo') {
+        st.accessRequests = (st.accessRequests || []).map(function (x) { return x.email === e ? Object.assign({}, x, reviewed) : x; });
+        demoSave(); return Promise.resolve();
+      }
+      return db.doc('accessRequests/' + e).set({
+        name: req.name || '', email: e, requestedAt: req.requestedAt || now(),
+        status: 'denied', reviewedAt: reviewed.reviewedAt, reviewedBy: reviewed.reviewedBy
+      }, { merge: true });
+    },
+    pendingAccessCount: function () {
+      return (st.accessRequests || []).filter(function (x) { return x.status === 'pending'; }).length;
+    },
 
     saveAircraft: function (a) {
       a = clone(a); if (window.PPAStatus && PPAStatus.syncMeters) PPAStatus.syncMeters(a); a.updatedAt = now(); delete a._priv;

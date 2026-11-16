@@ -22,8 +22,10 @@ var PPASettings = (function () {
     var s = st.settings, al = st.alerts || {}, R = S.rules(s), tv = s.tv || {}, pub = s.public || {};
     var used = {}; st.aircraft.forEach(function (a) { used[a.location] = (used[a.location] || 0) + 1; });
     var base = location.href.split('#')[0];
+    var pendingReqs = (st.accessRequests || []).filter(function (x) { return x.status === 'pending'; });
+    var pendBadge = pendingReqs.length ? ' <span class="reqbadge">' + pendingReqs.length + '</span>' : '';
     var html = U.topbar('Settings', 'Everything here is editable without code') + '<div class="wrap" style="max-width:980px">' + U.demoBanner() +
-      '<div class="chips"><button class="btn sm" data-jump="s-loc">Locations</button><button class="btn sm" data-jump="s-lists">Lists</button><button class="btn sm" data-jump="s-rules">Due rules</button><button class="btn sm" data-jump="s-tv">TV & public</button><button class="btn sm" data-jump="s-alerts">Alerts</button><button class="btn sm" data-jump="s-people">People</button><button class="btn sm" data-jump="s-flog">Flight log Sheet</button><button class="btn sm" data-jump="s-data">CSV / data</button><button class="btn sm" data-jump="s-live">Go live</button></div>' +
+      '<div class="chips"><button class="btn sm" data-jump="s-loc">Locations</button><button class="btn sm" data-jump="s-lists">Lists</button><button class="btn sm" data-jump="s-rules">Due rules</button><button class="btn sm" data-jump="s-tv">TV & public</button><button class="btn sm" data-jump="s-alerts">Alerts</button><button class="btn sm" data-jump="s-people">People' + pendBadge + '</button><button class="btn sm" data-jump="s-flog">Flight log Sheet</button><button class="btn sm" data-jump="s-data">CSV / data</button><button class="btn sm" data-jump="s-live">Go live</button></div>' +
 
       // locations
       '<div class="card" id="s-loc"><h2>Locations (schools / airports)</h2><div class="listed">' + (s.locations || []).map(function (l, i) {
@@ -71,11 +73,20 @@ var PPASettings = (function () {
       '<h3>Preview — what would go out right now</h3>' + preview(al) + '</div>' +
 
       // people
-      '<div class="card" id="s-people"><h2>People & roles</h2>' + (st.mode === 'demo' ? '<p class="sub" style="color:var(--mute)">In demo mode this list is just practice. Live, each person signs in with email + password you create in Firebase.</p>' : '') +
+      '<div class="card" id="s-people"><h2>People & roles' + pendBadge + '</h2>' +
+      (pendingReqs.length ? '<div class="pendingbox"><h3>Pending requests (' + pendingReqs.length + ')</h3>' + pendingReqs.map(function (r) {
+        return '<div class="pendingreq"><div><b>' + esc(r.name || '') + '</b> · ' + esc(r.email) + '</div>' +
+          (r.requestedAt ? '<p class="sub" style="color:var(--mute);margin:4px 0 0">Requested ' + esc((function (s) { var d = new Date(s); return isNaN(d.getTime()) ? String(s).slice(0, 10) : d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' }); })(r.requestedAt)) + '</p>' : '') +
+          '<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">' +
+          '<button class="btn ok sm" data-appr="cfi" data-em="' + esc(r.email) + '">Approve as CFI</button>' +
+          '<button class="btn sm" data-appr="editor" data-em="' + esc(r.email) + '">Approve as editor</button>' +
+          '<button class="btn bad sm" data-deny="' + esc(r.email) + '">Deny</button></div></div>';
+      }).join('') + '</div>' : '<p class="sub" style="color:var(--mute)">No pending access requests.</p>') +
+      (st.mode === 'demo' ? '<p class="sub" style="color:var(--mute)">In demo mode this list is just practice. Live, a CFI can request access from the sign-in screen; you approve them here without opening Firebase.</p>' : '') +
       '<div class="listed">' + (st.roles || []).map(function (r) {
         return '<div class="li"><span style="flex:2">' + esc(r.email) + '</span><input type="text" data-rn="' + esc(r.email) + '" value="' + esc(r.name || '') + '" placeholder="Name"><select data-rr="' + esc(r.email) + '" style="max-width:220px">' + opt('editor', 'Owner / Mechanic (edit all)', r.role) + opt('cfi', 'CFI (squawks only)', r.role) + opt('alerts', 'Alert sender (robot)', r.role) + '</select>' + (st.user && st.user.email === r.email ? '<span class="sub">(you)</span>' : '<button class="iconbtn" data-rx="' + esc(r.email) + '">✕</button>') + '</div>';
       }).join('') + '</div><div class="row" style="margin-top:8px"><input type="email" id="npe" placeholder="email" style="flex:2"><input type="text" id="npn" placeholder="Name" style="flex:1"><select id="npr" style="max-width:220px">' + opt('cfi', 'CFI (squawks only)', 'cfi') + opt('editor', 'Owner / Mechanic (edit all)', '') + opt('alerts', 'Alert sender (robot)', '') + '</select><button class="btn" id="addpe">Add</button></div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Also create the login in Firebase → Authentication → Add user (same email). Customers never need a login.</p></div>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">CFIs request a login from the sign-in screen. Approve them here — you do not need to add them in the Firebase console. You can still add someone by hand if their login already exists. Customers never need a login.</p></div>' +
 
       // flight log sheet
       '<div class="card" id="s-flog"><h2>Flight log Google Sheet (billing)</h2>' +
@@ -407,6 +418,8 @@ var PPASettings = (function () {
     $$('[data-rn]').forEach(function (el) { el.onchange = function () { var r = st.roles.filter(function (x) { return x.email === el.dataset.rn; })[0]; Store.saveRole({ email: r.email, role: r.role, name: el.value.trim() }).then(function () { toast('Saved'); }); }; });
     $$('[data-rx]').forEach(function (b) { b.onclick = function () { if (confirm('Remove access for ' + b.dataset.rx + '?')) Store.deleteRole(b.dataset.rx).then(function () { U.render(true); }); }; });
     $('#addpe').onclick = function () { var e = $('#npe').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return toast('Enter a valid email', true); Store.saveRole({ email: e, name: $('#npn').value.trim(), role: $('#npr').value }).then(function () { toast('Added'); U.render(true); }).catch(function (x) { toast(x.message, true); }); };
+    $$('[data-appr]').forEach(function (b) { b.onclick = function () { Store.approveAccess(b.dataset.em, b.dataset.appr).then(function () { toast(b.dataset.appr === 'editor' ? 'Approved as editor' : 'Approved as CFI'); U.render(true); }).catch(function (x) { toast(x.message, true); }); }; });
+    $$('[data-deny]').forEach(function (b) { b.onclick = function () { if (!confirm('Deny access for ' + b.dataset.deny + '?')) return; Store.denyAccess(b.dataset.deny).then(function () { toast('Denied'); U.render(true); }).catch(function (x) { toast(x.message, true); }); }; });
     // data
     $('#csvout').onclick = exportCSV;
     if ($('#flogout')) $('#flogout').onclick = exportFlightLog;
@@ -424,7 +437,7 @@ var PPASettings = (function () {
     };
     if ($('#impgo')) $('#impgo').onclick = applyImport;
     if ($('#impno')) $('#impno').onclick = function () { pendingImport = null; U.render(true); };
-    $('#jsonout').onclick = function () { download('ppa-maint-backup-' + S.todayStr() + '.json', JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports || [], priv: st.priv, roles: st.roles }, null, 1), 'application/json'); };
+    $('#jsonout').onclick = function () { download('ppa-maint-backup-' + S.todayStr() + '.json', JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, flightReports: st.flightReports || [], priv: st.priv, roles: st.roles, accessRequests: st.accessRequests || [] }, null, 1), 'application/json'); };
     if ($('#jsonin')) $('#jsonin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { try { var d = JSON.parse(t); if (!d.aircraft || !d.settings) throw new Error('Not a board backup'); localStorage.setItem('ppa-mb-demo-v1', JSON.stringify(d)); location.reload(); } catch (e) { toast(e.message, true); } }); };
     if ($('#reset')) $('#reset').onclick = function () { if (confirm('Replace everything on this device with fresh SAMPLE data?')) { Store.resetDemo(); toast('Sample data reloaded'); } };
     if ($('#clear')) $('#clear').onclick = function () { if (confirm('Remove all sample aircraft and squawks on this device? (Settings stay.)')) { Store.clearDemo(); toast('Empty board ready'); } };

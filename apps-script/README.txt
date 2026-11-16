@@ -31,7 +31,7 @@ Setup (about 10 minutes), signed in as kylehudson1014@gmail.com:
 6. On the board: Settings → Flight log Google Sheet. Paste the Web app URL and
    the same SHARED_TOKEN, then Save.
 7. Submit a test post-flight report (demo is fine for a dry run; live will write
-   a real row). Confirm a "Flight Log" tab appears, and that a snapped meter
+   a real row). Confirm a month tab (for example "2026-11 Nov") appears, and that a snapped meter
    photo (if you used Snap meter) lands in the Drive folder "PPA Flight Log Photos".
 
 If a row doesn't show up, an editor can use Settings → Resend unsent to Sheet.
@@ -40,3 +40,22 @@ Duplicates are ignored by Report ID. Meter photos are only on the original POST
 
 To rotate the token: change SHARED_TOKEN in Script properties and in Settings
 at the same time.
+
+Monthly tabs and billing columns
+--------------------------------
+New reports go into a tab named for the flight month, like "2026-11 Nov"
+(America/Chicago, newest month first). An older "Flight Log" tab is left as-is;
+it is upgraded in place with any missing columns.
+
+Each log tab has Billed (checkbox), Billed by (initials), and Billed on (date)
+on the right, after the photo columns. Checking Billed fills in today's date automatically. Billed by is left
+blank for the secretary's initials. Unchecking Billed clears the date only. Billed rows are shaded green; unbilled rows are light
+yellow. A filter and a frozen header are applied automatically.
+
+To update an existing deployment after pasting a new flight-log.gs:
+
+1. In the PPA Flight Log Sheet, open Extensions → Apps Script, select all,
+   paste over the old code, and Save.
+2. Deploy → Manage deployments → pencil (edit) → Version: New version → Deploy.
+   The web app URL stays the same, so nothing changes on the board.
+3. Open the Sheet once so onOpen can add the new columns to existing tabs.

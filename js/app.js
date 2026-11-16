@@ -56,7 +56,7 @@
     return '<div class="topbar"><div class="logo-plate"><img src="img/ppa-logo.png" alt="Patriot Pilot Academy"></div><div><h1>' + esc(title) + '</h1><div class="sub">' + (sub || 'Patriot Pilot Academy · Maintenance Board') + '</div></div><div class="sp"></div>' +
       (st.mode === 'live' && !Store.can('squawk') ? '<nav class="nav row">' + n('#board', 'Fleet') + (st.user ? '' : n('#login', 'Staff sign in')) + '</nav>' :
       st.mode === 'live' && !Store.can('edit') ? '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Report') + '</nav>' :
-      '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Report') + n('#edit', 'Edit') + n('#settings', 'Settings') + n('#tv', 'TV') + '</nav>') + '<div class="sub who">' + who + '</div></div>';
+      '<nav class="nav row">' + n('#board', 'Fleet') + n('#squawk', 'Report') + n('#edit', 'Edit') + n('#settings', 'Settings' + (Store.can('edit') && Store.pendingAccessCount() ? ' <span class="reqbadge">' + Store.pendingAccessCount() + '</span>' : '')) + n('#tv', 'TV') + '</nav>') + '<div class="sub who">' + who + '</div></div>';
   }
   function demoBanner() {
     if (st.mode !== 'demo') return st.error ? '<div class="banner red">Connection problem: ' + esc(st.error) + '</div>' : '';
@@ -150,26 +150,67 @@
 
   // ---------- LOGIN ----------
   function viewLogin() {
-    if (st.mode === 'demo') { location.hash = '#edit'; return; }
-    app.innerHTML = topbar('Staff sign in') + '<div class="wrap" style="max-width:460px"><div class="card"><h2>Sign in</h2>' +
+    var requesting = (location.hash.split('?')[0] === '#request');
+    if (st.mode === 'demo' && !requesting && location.hash.split('?')[0] !== '#login') { location.hash = '#edit'; return; }
+    if (!requesting) {
+      app.innerHTML = topbar('Staff sign in') + '<div class="wrap" style="max-width:460px">' + (st.mode === 'demo' ? demoBanner() : '') + '<div class="card"><h2>Sign in</h2>' +
+        '<label class="f">Email<input type="email" id="em" autocomplete="username" value="' + esc(remember('lastEmail') || '') + '"></label><br>' +
+        '<label class="f">Password<input type="password" id="pw" autocomplete="current-password"></label><br>' +
+        '<button class="btn pri big" id="go">Sign in</button><p><a href="#" id="fp">Forgot password?</a></p>' +
+        '<p><a class="btn big" href="#request">Request access</a></p>' +
+        '<p class="sub" style="color:var(--mute)">CFIs can request a login here. An editor approves it under Settings → People &amp; roles. Customers don\'t need to sign in. Use <a href="#board">Fleet status</a>.</p></div></div>';
+      $('#go').onclick = function () { var em = $('#em').value; remember('lastEmail', em); Store.login(em, $('#pw').value).then(function () { location.hash = remember('afterLogin') || '#edit'; }).catch(function (e) { toast(e.message, true); }); };
+      $('#pw').onkeydown = function (k) { if (k.key === 'Enter') $('#go').click(); };
+      if ($('#fp')) $('#fp').onclick = function (x) { x.preventDefault(); if (st.mode === 'demo') { toast('Password reset is only used in live mode'); return; } Store.resetPassword($('#em').value).then(function () { toast('Reset email sent'); }).catch(function (e) { toast(e.message, true); }); };
+      return;
+    }
+    app.innerHTML = topbar('Request access') + '<div class="wrap" style="max-width:460px">' + (st.mode === 'demo' ? demoBanner() : '') + '<div class="card"><h2>Request access</h2>' +
+      '<p class="sub" style="color:var(--mute)">Create a login. An editor (Kyle or Chad) will approve you as a CFI or editor. Customers don\'t need a login — use <a href="#board">Fleet status</a>.</p>' +
+      '<label class="f">Name<input type="text" id="rn" autocomplete="name" maxlength="80" placeholder="Your name"></label><br>' +
       '<label class="f">Email<input type="email" id="em" autocomplete="username" value="' + esc(remember('lastEmail') || '') + '"></label><br>' +
-      '<label class="f">Password<input type="password" id="pw" autocomplete="current-password"></label><br>' +
-      '<button class="btn pri big" id="go">Sign in</button><p><a href="#" id="fp">Forgot password?</a></p>' +
-      '<p class="sub" style="color:var(--mute)">Accounts are created by the owner. Customers don\'t need to sign in. Use <a href="#board">Fleet status</a>.</p></div></div>';
-    $('#go').onclick = function () { var em = $('#em').value; remember('lastEmail', em); Store.login(em, $('#pw').value).then(function () { location.hash = remember('afterLogin') || '#edit'; }).catch(function (e) { toast(e.message, true); }); };
-    $('#pw').onkeydown = function (k) { if (k.key === 'Enter') $('#go').click(); };
-    $('#fp').onclick = function (x) { x.preventDefault(); Store.resetPassword($('#em').value).then(function () { toast('Reset email sent'); }).catch(function (e) { toast(e.message, true); }); };
+      '<label class="f">Password<input type="password" id="pw" autocomplete="new-password" minlength="6" placeholder="At least 6 characters"></label><br>' +
+      '<label class="f">Confirm password<input type="password" id="pw2" autocomplete="new-password"></label><br>' +
+      '<button class="btn pri big" id="reqgo">Request access</button>' +
+      '<p><a href="#login">Already have an account? Sign in</a></p></div></div>';
+    function submitReq() {
+      var name = ($('#rn').value || '').trim(), em = ($('#em').value || '').trim(), pw = $('#pw').value || '', pw2 = $('#pw2').value || '';
+      if (!name) return toast('Enter your name', true);
+      if (pw !== pw2) return toast('The passwords don\'t match', true);
+      remember('lastEmail', em);
+      Store.requestAccess(name, em, pw).then(function () { location.hash = remember('afterLogin') || '#edit'; }).catch(function (e) { toast(e.message, true); });
+    }
+    $('#reqgo').onclick = submitReq;
+    $('#pw2').onkeydown = function (k) { if (k.key === 'Enter') submitReq(); };
   }
   function needRole(what, route) {
     if (Store.can(what)) return false;
     if (st.mode === 'live' && st.user && st.role === 'checking') { app.innerHTML = topbar('Signing in') + '<div class="wrap"><div class="card"><h2>Checking your access…</h2></div></div>'; return true; }
+    var req = st.myAccessRequest || ((st.accessRequests || []).filter(function (x) { return st.user && x.email === st.user.email; })[0]);
+    if (st.user && st.role !== 'checking' && req && (req.status === 'pending' || req.status === 'denied')) {
+      if (req.status === 'pending') {
+        app.innerHTML = topbar('Request pending') + '<div class="wrap" style="max-width:520px">' + (st.mode === 'demo' ? demoBanner() : '') +
+          '<div class="card"><h2>Your request is pending approval</h2>' +
+          '<p>Thanks, ' + esc(req.name || st.name || st.user.email) + '. An editor will approve your access under Settings → People &amp; roles. You can close this page and sign in again later.</p>' +
+          '<p class="sub" style="color:var(--mute)">Signed in as ' + esc(st.user.email) + '.</p>' +
+          (st.mode === 'demo' ? '<button class="btn" id="be">Return to demo as Owner / Mechanic</button> ' : '') +
+          '<a class="btn" href="#logout">Sign out</a></div></div>';
+      } else {
+        app.innerHTML = topbar('Request denied') + '<div class="wrap" style="max-width:520px">' + (st.mode === 'demo' ? demoBanner() : '') +
+          '<div class="card"><h2>Your request was denied</h2>' +
+          '<p>The account ' + esc(st.user.email) + ' was not approved. Ask the owner if you need access.</p>' +
+          (st.mode === 'demo' ? '<button class="btn" id="be">Return to demo as Owner / Mechanic</button> ' : '') +
+          '<a class="btn" href="#logout">Sign out</a></div></div>';
+      }
+      if ($('#be')) $('#be').onclick = function () { Store.setDemoRole('editor'); location.hash = '#settings'; };
+      return true;
+    }
     if (st.mode === 'demo') {
       app.innerHTML = topbar('Demo') + '<div class="wrap">' + demoBanner() + '<div class="card"><h2>You are viewing the demo as: ' + esc(st.role.toUpperCase()) + '</h2><p>CFIs can only report squawks. Switch the demo role to try other screens.</p><button class="btn pri" id="be">Demo as Owner / Mechanic</button></div></div>';
       $('#be').onclick = function () { Store.setDemoRole('editor'); }; return true;
     }
     remember('afterLogin', route);
     if (!st.user) { location.hash = '#login'; return true; }
-    app.innerHTML = topbar('No access') + '<div class="wrap"><div class="card"><h2>Your account (' + esc(st.user.email) + ') doesn\'t have access to this screen.</h2><p>Ask the owner to add you under Settings → People &amp; roles.</p><a class="btn" href="#logout">Sign out</a></div></div>';
+    app.innerHTML = topbar('No access') + '<div class="wrap"><div class="card"><h2>Your account (' + esc(st.user.email) + ') doesn\'t have access to this screen.</h2><p>Ask the owner to add you under Settings → People &amp; roles, or <a href="#request">request access</a>.</p><a class="btn" href="#logout">Sign out</a></div></div>';
     return true;
   }
 
@@ -193,7 +234,7 @@
     if (route === '#logout') { Store.logout().then(function () { location.hash = '#board'; }); return; }
     if (route.indexOf('#tv') === 0) viewTV();
     else if (route === '#board') viewBoard();
-    else if (route === '#login') viewLogin();
+    else if (route === '#login' || route === '#request') viewLogin();
     else if (route === '#squawk') PPAViews.squawk();
     else if (route === '#edit') { if (!needRole('edit', route)) PPAViews.editList(); }
     else if (route.indexOf('#edit/') === 0) { if (!needRole('edit', route)) PPAViews.editOne(route.slice(6)); }

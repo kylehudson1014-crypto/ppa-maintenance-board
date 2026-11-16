@@ -68,6 +68,32 @@ service cloud.firestore {
       allow create: if canSquawk() && validFlightReport();
     }
 
+
+    match /accessRequests/{email} {
+      function validRequestCreate() {
+        let d = request.resource.data;
+        return signedIn()
+          && email == myEmail()
+          && d.keys().hasAll(['name', 'email', 'requestedAt', 'status'])
+          && d.keys().hasOnly(['name', 'email', 'requestedAt', 'status'])
+          && d.email is string && d.email == myEmail()
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+          && d.requestedAt is string && d.requestedAt.size() >= 10 && d.requestedAt.size() <= 40
+          && d.status == 'pending';
+      }
+      function validRequestUpdate() {
+        let d = request.resource.data;
+        return isEditor()
+          && d.email == resource.data.email
+          && d.status in ['pending', 'approved', 'denied']
+          && d.keys().hasOnly(['name', 'email', 'requestedAt', 'status', 'reviewedAt', 'reviewedBy', 'approvedRole']);
+      }
+      allow create: if validRequestCreate();
+      allow read: if isEditor() || (signedIn() && email == myEmail());
+      allow update: if validRequestUpdate();
+      allow delete: if isEditor();
+    }
+
     match /{path=**} { allow read, write: if false; }
   }
 }
