@@ -5,7 +5,44 @@ var Store = (function () {
   var st = { mode: cfg ? 'live' : 'demo', ready: false, settings: null, alerts: null, aircraft: [], squawks: [], closedSquawks: [], flightReports: [], priv: {}, roles: [], accessRequests: [], myAccessRequest: null,
     user: null, role: 'public', name: '', fromCache: false, error: '', reportsError: '', lastSync: null };
   var listeners = [];
-  function emit() { st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
+  // ---------------- TEST / PREVIEW ----------------
+  // Any copy served from a path or host containing "preview" reads the LIVE data but never writes it:
+  // edits live in an overlay on this device (localStorage), reports never reach the Flight Log Sheet,
+  // and every Firestore write method is blocked as a second line of defence.
+  var PREVIEW = typeof location !== 'undefined' && /preview/i.test(String(location.hostname) + String(location.pathname));
+  var OKEY = 'ppa-mb-preview-overlay-v1';
+  var ov = null;
+  function ovEmpty() { return { aircraft: {}, squawks: {}, priv: {}, reports: [], settings: null, alerts: null }; }
+  function ovLoad() { var o = null; try { o = JSON.parse(localStorage.getItem(OKEY)); } catch (e) {} return Object.assign(ovEmpty(), o || {}); }
+  function ovSave() { try { localStorage.setItem(OKEY, JSON.stringify(ov)); } catch (e) {} }
+  if (PREVIEW) {
+    ov = ovLoad();
+    if (typeof window !== 'undefined' && window.fetch) {
+      var realFetch = window.fetch.bind(window);
+      window.fetch = function (url, opt) {
+        var m = String((opt && opt.method) || 'GET').toUpperCase();
+        if (m !== 'GET' && /script\.google(usercontent)?\.com/i.test(String(url && url.url || url))) return Promise.reject(new Error('Test preview: Flight Log Sheet posts are disabled'));
+        return realFetch(url, opt);
+      };
+    }
+  }
+  function applyOverlay() {
+    if (!ov) return;
+    Object.keys(ov.aircraft).forEach(function (id) { var d = ov.aircraft[id]; st.aircraft = st.aircraft.filter(function (x) { return x.id !== id; }); if (d) st.aircraft.push(clone(d)); });
+    Object.keys(ov.squawks).forEach(function (id) {
+      var d = ov.squawks[id];
+      st.squawks = st.squawks.filter(function (x) { return x.id !== id; }); st.closedSquawks = (st.closedSquawks || []).filter(function (x) { return x.id !== id; });
+      if (d) { if (d.status === 'open') st.squawks.push(clone(d)); else st.closedSquawks.unshift(clone(d)); }
+    });
+    Object.keys(ov.priv).forEach(function (id) { st.priv[id] = Object.assign({}, st.priv[id], ov.priv[id]); });
+    if (ov.settings) st.settings = clone(ov.settings);
+    if (ov.alerts) st.alerts = clone(ov.alerts);
+    ov.reports.slice().reverse().forEach(function (r) {
+      st.flightReports = (st.flightReports || []).filter(function (x) { return x.id !== r.id; }); st.flightReports.unshift(clone(r));
+    });
+  }
+  function testNote(msg) { setTimeout(function () { if (window.PPAUI && PPAUI.toast) PPAUI.toast(msg || '🧪 Test only — not saved to the live board', false); }, 900); }
+  function emit() { if (PREVIEW) applyOverlay(); st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
   function now() { return new Date().toISOString(); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function normEmail(e) { return String(e || '').trim().toLowerCase(); }
@@ -33,9 +70,11 @@ var Store = (function () {
       .then(function () { return Promise.all([loadScript(base + 'firebase-auth-compat.js'), loadScript(base + 'firebase-firestore-compat.js')]); })
       .then(function () {
         firebase.initializeApp(cfg);
+        if (PREVIEW) blockFirestoreWrites();
         db = firebase.firestore(); auth = firebase.auth();
         var em = window.PPA_CONFIG.emulator; // local testing only
         if (em) { db.useEmulator(em.host || '127.0.0.1', em.firestore || 8089); auth.useEmulator('http://' + (em.host || '127.0.0.1') + ':' + (em.auth || 9099)); }
+        if (PREVIEW) return null; // memory cache only: never share an offline write queue with the live board
         return db.enablePersistence({ synchronizeTabs: true }).catch(function () {});
       })
       .then(function () {
@@ -89,6 +128,15 @@ var Store = (function () {
         });
       })
       .catch(function (e) { err(e); });
+  }
+  function blockFirestoreWrites() {
+    var F = firebase.firestore;
+    var deny = function () { return Promise.reject(new Error('Test preview: writes to the live database are blocked')); };
+    if (F.DocumentReference) ['set', 'update', 'delete'].forEach(function (m) { F.DocumentReference.prototype[m] = deny; });
+    if (F.CollectionReference) F.CollectionReference.prototype.add = deny;
+    if (F.WriteBatch) F.WriteBatch.prototype.commit = deny;
+    if (F.Firestore) F.Firestore.prototype.runTransaction = deny;
+    if (F.Transaction) ['set', 'update', 'delete'].forEach(function (m) { F.Transaction.prototype[m] = function () { throw new Error('Test preview: writes are blocked'); }; });
   }
   function err(e) { console.error(e); st.error = (e && e.message) || String(e); emit(); }
   function emptySettings() { var s = PPASample.build().settings; s.locations = [{ id: 'kecp', code: 'KECP', name: 'Northwest Florida Beaches — Panama City' }, { id: 'kcew', code: 'KCEW', name: 'Bob Sikes — Crestview' }, { id: 'kdhn', code: 'KDHN', name: 'Dothan Regional — Dothan' }]; return s; }
@@ -292,5 +340,39 @@ var Store = (function () {
       t.sort(); return t.length ? new Date(t[t.length - 1]) : null;
     }
   };
+  api.preview = PREVIEW;
+  if (PREVIEW) {
+    var denied = function () { return Promise.reject(new Error('Test preview: sign-up and access changes are turned off here. Use the live board.')); };
+    api.requestAccess = denied; api.approveAccess = denied; api.denyAccess = denied; api.saveRole = denied; api.deleteRole = denied; api.resetPassword = denied;
+    api.saveAircraft = function (a) {
+      a = clone(a); if (window.PPAStatus && PPAStatus.syncMeters) PPAStatus.syncMeters(a); a.updatedAt = now(); delete a._priv;
+      ov.aircraft[a.id] = a; ovSave(); emit(); testNote(); return Promise.resolve(clone(a));
+    };
+    api.deleteAircraft = function (id) { ov.aircraft[id] = null; ovSave(); emit(); testNote(); return Promise.resolve(); };
+    api.savePrivate = function (id, data) { ov.priv[id] = Object.assign({}, ov.priv[id], data); ovSave(); emit(); testNote(); return Promise.resolve(); };
+    api.addSquawk = function (s) {
+      var doc = { id: 'test-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), aircraftId: s.aircraftId, tail: s.tail, text: String(s.text).slice(0, 500), severity: s.severity, grounding: s.severity === 'grounding',
+        status: 'open', reportedBy: String(s.reportedBy || '').slice(0, 80), createdAt: now(), test: true };
+      ov.squawks[doc.id] = doc; ovSave(); emit(); testNote(); return Promise.resolve(clone(doc));
+    };
+    api.updateSquawk = function (s) { s = clone(s); s.grounding = s.severity === 'grounding'; ov.squawks[s.id] = s; ovSave(); emit(); testNote(); return Promise.resolve(); };
+    api.addFlightReport = function (s) {
+      var oilAdded = !!s.oilAdded;
+      var n = function (v) { return v == null || v === '' ? null : Number(v); };
+      var doc = { id: 'test-' + Date.now().toString(36), aircraftId: s.aircraftId, tail: s.tail,
+        reporterEmail: String(s.reporterEmail || (st.user && st.user.email) || '').trim().toLowerCase(),
+        reportedBy: String(s.reportedBy || '').slice(0, 80), student: String(s.student || '').slice(0, 80),
+        oilAdded: oilAdded, oilQts: oilAdded ? Number(s.oilQts) : null,
+        tachStart: n(s.tachStart), tachEnd: n(s.tachEnd), hobbsStart: n(s.hobbsStart), hobbsEnd: n(s.hobbsEnd),
+        createdAt: now(), applied: false, test: true };
+      ov.reports.unshift(doc); ovSave(); emit(); testNote('🧪 Test only — report not saved and not sent to the Flight Log Sheet'); return Promise.resolve(clone(doc));
+    };
+    api.markReportSheetSent = function (id) { ov.reports.forEach(function (r) { if (r.id === id) r.sheetSent = true; }); ovSave(); emit(); return Promise.resolve(); };
+    api.sendFlightLogToSheet = function () { return Promise.resolve({ skipped: true, preview: true }); };
+    api.saveSettings = function (s) { s = clone(s); s.updatedAt = now(); ov.settings = s; ovSave(); emit(); testNote(); return Promise.resolve(); };
+    api.saveAlerts = function (a) { ov.alerts = clone(a); ovSave(); emit(); testNote(); return Promise.resolve(); };
+    api.resetPreview = function () { try { localStorage.removeItem(OKEY); } catch (e) {} location.reload(); };
+    api.previewChanges = function () { return Object.keys(ov.aircraft).length + Object.keys(ov.squawks).length + Object.keys(ov.priv).length + ov.reports.length + (ov.settings ? 1 : 0) + (ov.alerts ? 1 : 0); };
+  }
   return api;
 })();

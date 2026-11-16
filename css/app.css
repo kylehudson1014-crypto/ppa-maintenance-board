@@ -154,3 +154,9 @@ input.snapok{outline:2px solid #18a352;border-color:#18a352}
 .nav a .reqbadge{margin-left:4px}
 .pendingbox{margin:10px 0 14px}
 .pendingreq{border:1px solid #3d5a24;background:#132015;border-radius:12px;padding:12px;margin-bottom:10px}
+/* TEST / PREVIEW copy only (see Store.preview) */
+.previewbar{position:sticky;top:0;z-index:200;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:repeating-linear-gradient(45deg,#7a1fa2,#7a1fa2 14px,#5e1580 14px,#5e1580 28px);color:#fff;padding:8px 14px;font-size:14px;border-bottom:3px solid #ffcf5a;box-shadow:0 4px 18px #0009}
+.previewbar b{color:#ffe08a;letter-spacing:.04em}
+.previewbar button{background:#ffcf5a;color:#2a1600;border:0;border-radius:8px;padding:6px 10px;font-weight:800;cursor:pointer}
+.previewbar a{color:#fff;font-weight:700}
+body.tv .previewbar{font-size:12px;padding:4px 10px}

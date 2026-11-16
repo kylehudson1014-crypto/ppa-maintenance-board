@@ -4,7 +4,6 @@
 var PPAStatus = (function () {
   var ITEMS = [
     { key: 'annual',  letter: 'A', label: 'Annual inspection',        short: 'Annual' },
-    { key: 'vor',     letter: 'V', label: 'VOR check (IFR)',          short: 'VOR' },
     { key: 'hundred', letter: '1', label: '100-hour inspection',      short: '100-hr' },
     { key: 'pitot',   letter: 'A', label: 'Altimeter / pitot-static (IFR)', short: 'Alt/Pitot' },
     { key: 'xpdr',    letter: 'T', label: 'Transponder',              short: 'Xpdr' },
@@ -14,12 +13,12 @@ var PPAStatus = (function () {
 
   var DEFAULT_RULES = {
     annual:  { months: 12, warnDays: 30 },
-    vor:     { days: 30,   warnDays: 7 },
     hundred: { hours: 100, warnHours: 10 },
     pitot:   { months: 24, warnDays: 30 },
     xpdr:    { months: 24, warnDays: 30 },
     elt:     { months: 12, warnDays: 30 },
     ads:     { warnDays: 30, warnHours: 10 },
+    oil50:   { hours: 50, warnHours: 5 },
     staleHoursDays: 7
   };
 
@@ -87,6 +86,33 @@ var PPAStatus = (function () {
     return a;
   }
 
+  // ---- tracked reminders (ADs / extras) ----
+  // GPS / nav database updates are not tracked (Chad, 11/16/2026).
+  var GPS_RE = /\bgps\b|nav\s*data|navigation\s*data|\bnav\s*db\b|\bdatabase\b|\bnavdata\b|jeppesen/i;
+  // A 50-hour oil change reminder (FSP "50 Hour Oil Change", "50 hr oil", "Oil change", ...).
+  var OIL50_RE = /\b50\s*-?\s*(hour|hr|h)s?\b.*\boil\b|\boil\s*(and\s*filter\s*)?change\b|\boil\b.*\b50\s*-?\s*(hour|hr|h)s?\b/i;
+  function adText(ad) { return String((ad && ad.number) || '') + ' ' + String((ad && ad.desc) || ''); }
+  function isGpsUpdate(ad) { return GPS_RE.test(adText(ad)); }
+  function isOilChange(ad) { return !!ad && (ad.kind === 'oil50' || OIL50_RE.test(adText(ad))); }
+  // Ignored = editor tapped Ignore, or a GPS/nav update the editor has not explicitly restored.
+  function isIgnoredAD(ad) { if (!ad) return false; if (ad.ignored === true) return true; if (ad.ignored === false) return false; return isGpsUpdate(ad); }
+  // Default 50-hr oil change for planes that do not already track one (e.g. from FSP).
+  // Starting point: the last 100-hr (oil is changed at the 100-hr), unless an editor records one.
+  function defaultOil50(a, R) {
+    R = R || rules(null);
+    var last100 = num(a && a.last100);
+    return { id: 'oil50', kind: 'oil50', virtual: true, number: '', desc: '50-hr oil change', nonGrounding: true,
+      intervalMonths: null, intervalDays: null, intervalHours: R.oil50.hours,
+      lastDoneDate: '', lastDoneHours: last100, assumedFrom100: last100 != null,
+      nextDueDate: '', nextDueHours: null };
+  }
+  // The list the board tracks for one aircraft: stored ADs + the default oil change when missing.
+  function trackedADs(a, R) {
+    var list = (a && a.ads || []).slice();
+    if (!list.some(isOilChange) && a && a.oil50 !== false) list.push(defaultOil50(a, R));
+    return list;
+  }
+
   function evalAD(ad, a, R, today) {
     var cur = meterReading(a);
     var dueDate = ad.nextDueDate || null, dueHrs = num(ad.nextDueHours);
@@ -94,7 +120,10 @@ var PPAStatus = (function () {
     if (num(ad.intervalMonths) && ad.lastDoneDate) dueDate = addCalMonths(ad.lastDoneDate, num(ad.intervalMonths));
     if (num(ad.intervalHours) && num(ad.lastDoneHours) != null) dueHrs = num(ad.lastDoneHours) + num(ad.intervalHours);
     var res = { state: 'ok', parts: [] };
-    if (!dueDate && dueHrs == null) return { state: 'missing', value: '?', detail: (ad.number || 'AD') + ': no next-due entered', dueDate: null, dueHours: null };
+    if (!dueDate && dueHrs == null) {
+      if (ad.virtual) return { state: 'none', value: '—', detail: '50-hr oil change: enter when it was last done', dueDate: null, dueHours: null };
+      return { state: 'missing', value: '?', detail: (ad.number || 'AD') + ': no next-due entered', dueDate: null, dueHours: null };
+    }
     var st = 'ok', value = '', detail = [];
     var dLeft = null, hLeft = null;
     if (dueDate) { dLeft = daysBetween(today, dueDate); detail.push(niceDate(dueDate)); }
@@ -102,13 +131,16 @@ var PPAStatus = (function () {
     if ((dLeft != null && dLeft < 0) || (hLeft != null && hLeft < 0)) st = 'over';
     else if ((dLeft != null && dLeft <= R.ads.warnDays) || (hLeft != null && hLeft <= R.ads.warnHours)) st = 'due';
     var ngOver = false;
-    if (st === 'over' && (ad.nonGrounding || /non\s*-?\s*grounding/i.test(ad.desc || ''))) { st = 'due'; ngOver = true; }
+    var nonGr = ad.nonGrounding || /non\s*-?\s*grounding/i.test(ad.desc || '') || (isOilChange(ad) && ad.nonGrounding !== false);
+    var warnH = isOilChange(ad) && R.oil50 ? R.oil50.warnHours : R.ads.warnHours;
+    if (st === 'due' && !(dLeft != null && dLeft <= R.ads.warnDays) && hLeft != null && hLeft > warnH) st = 'ok';
+    if (st === 'over' && nonGr) { st = 'due'; ngOver = true; }
     var overText = '';
     if (hLeft != null && (dLeft == null || hLeft * 1 < dLeft)) { value = hLeft < 0 ? '-' + hoursText(-hLeft) + 'h' : hoursText(hLeft) + 'h'; if (hLeft < 0) overText = hoursText(-hLeft) + ' hrs'; }
     else { value = dLeft < 0 ? '-' + (-dLeft) + 'd' : dLeft + 'd'; if (dLeft < 0) overText = (-dLeft) + ' days'; }
     return { state: st, value: value, overText: overText, dLeft: dLeft, hLeft: hLeft, dueDate: dueDate, dueHours: dueHrs,
       nonGroundingOverdue: ngOver,
-      detail: (ngOver ? 'OVERDUE (non-grounding) — ' : '') + (ad.number || ad.desc || 'AD') + ' due ' + detail.join(' or ') + ' (whichever first)' + (ad.nonGrounding && !ngOver ? ' · non-grounding' : '') };
+      detail: (ngOver ? 'OVERDUE (non-grounding) — ' : '') + (ad.number || ad.desc || 'AD') + ' due ' + detail.join(' or ') + ' (whichever first)' + (nonGr && !ngOver ? ' · non-grounding' : '') + (ad.virtual && ad.assumedFrom100 ? ' · assumed from last 100-hr' : '') };
   }
 
   // Evaluate one aircraft. Returns { items:[...], overall:'grounded'|'due'|'ok', reasons:[...], ... }
@@ -120,11 +152,10 @@ var PPAStatus = (function () {
     var out = [];
     ITEMS.forEach(function (it) {
       var base = { key: it.key, letter: it.letter, label: it.label, short: it.short };
-      if (na[it.key] || ((it.key === 'vor' || it.key === 'pitot') && a.ifr === false) || (it.key === 'hundred' && a.forHire === false)) {
+      if (na[it.key] || (it.key === 'pitot' && a.ifr === false) || (it.key === 'hundred' && a.forHire === false)) {
         out.push(Object.assign(base, { state: 'na', value: 'N/A', detail: 'Not applicable' })); return;
       }
       if (it.key === 'annual') out.push(dateItem(base, addCalMonths(d.annual, R.annual.months), R.annual.warnDays, today));
-      else if (it.key === 'vor') out.push(dateItem(base, addDays(d.vor, R.vor.days), R.vor.warnDays, today));
       else if (it.key === 'pitot') out.push(dateItem(base, addCalMonths(d.pitot, R.pitot.months), R.pitot.warnDays, today));
       else if (it.key === 'xpdr') out.push(dateItem(base, addCalMonths(d.xpdr, R.xpdr.months), R.xpdr.warnDays, today));
       else if (it.key === 'hundred') {
@@ -144,26 +175,28 @@ var PPAStatus = (function () {
           sub: [{ k: 'Inspection', s: insp.state, v: insp.value }, { k: 'Battery', s: bat.state, v: bat.value }] }));
       }
       else if (it.key === 'ads') {
-        var ads = (a.ads || []).filter(function (x) { return !x.inactive; });
-        if (!ads.length) { out.push(Object.assign(base, { state: 'none', value: '—', detail: 'No recurring ADs listed' })); return; }
+        var all = trackedADs(a, R).filter(function (x) { return !x.inactive; });
+        var ignoredAds = all.filter(isIgnoredAD);
+        var ads = all.filter(function (x) { return !isIgnoredAD(x); });
+        if (!ads.length) { out.push(Object.assign(base, { state: 'none', value: '—', detail: 'No recurring ADs listed' + (ignoredAds.length ? ' · ' + ignoredAds.length + ' ignored' : ''), ads: [], ignoredAds: ignoredAds })); return; }
         var evals = ads.map(function (ad) { var e = evalAD(ad, a, R, today); e.ad = ad; return e; });
         var w2 = evals.reduce(function (p, c) { return RANK[c.state] > RANK[p.state] ? c : (RANK[c.state] === RANK[p.state] && (c.dLeft != null && p.dLeft != null && c.dLeft < p.dLeft) ? c : p); });
-        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, nonGroundingOverdue: !!w2.nonGroundingOverdue, detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' ADs tracked' : ''), ads: evals }));
+        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, nonGroundingOverdue: !!w2.nonGroundingOverdue, reasonShort: isOilChange(w2.ad) ? '50-hr oil' : '', detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' items tracked' : '') + (ignoredAds.length ? ' · ' + ignoredAds.length + ' ignored' : ''), ads: evals, ignoredAds: ignoredAds }));
       }
     });
 
     var open = (squawks || []).filter(function (s) { return s.aircraftId === a.id && s.status === 'open'; });
     var grounding = open.filter(function (s) { return s.grounding; });
     var reasons = [];
-    out.forEach(function (i) { if (i.state === 'over') reasons.push(i.short + ' OVERDUE' + (i.overText ? ' ' + i.overText : '')); });
+    out.forEach(function (i) { if (i.state === 'over') reasons.push((i.reasonShort || i.short) + ' OVERDUE' + (i.overText ? ' ' + i.overText : '')); });
     grounding.forEach(function (s) { reasons.push('Squawk: ' + s.text); });
     if (a.grounded) reasons.unshift('Grounded by maintenance' + (a.groundedReason ? ': ' + a.groundedReason : ''));
     var overall = 'ok', dueReasons = [];
     if (reasons.length) overall = 'grounded';
     else {
       out.forEach(function (i) {
-        if (i.state === 'due' && i.nonGroundingOverdue) dueReasons.push(i.short + ' OVERDUE (non-grounding): ' + i.value);
-        else if (i.state === 'due') dueReasons.push(i.short + ' due in ' + i.value);
+        if (i.state === 'due' && i.nonGroundingOverdue) dueReasons.push((i.reasonShort || i.short) + ' OVERDUE (non-grounding): ' + i.value);
+        else if (i.state === 'due') dueReasons.push((i.reasonShort || i.short) + ' due in ' + i.value);
         if (i.state === 'missing') dueReasons.push(i.short + ': needs data');
       });
       if (dueReasons.length) overall = 'due';
@@ -337,7 +370,8 @@ var PPAStatus = (function () {
     return { ok: true, warn: false, kind: 'ok', delta: delta, message: '' };
   }
 
-  return { ITEMS: ITEMS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, alertEvents: alertEvents,
+  return { ITEMS: ITEMS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, evalAD: evalAD,
+    isGpsUpdate: isGpsUpdate, isOilChange: isOilChange, isIgnoredAD: isIgnoredAD, defaultOil50: defaultOil50, trackedADs: trackedADs, alertEvents: alertEvents,
     todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText,
     hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters,
     hasTach: hasTach, oilAddedLast30Days: oilAddedLast30Days, oilAddedSince: oilAddedSince, lastFspImportAt: lastFspImportAt,

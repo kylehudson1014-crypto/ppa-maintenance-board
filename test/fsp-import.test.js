@@ -61,7 +61,8 @@ eq('open reporter/gnd/status', [open[0].reportedBy, open[0].groundable, open[0].
 ok('closed squawk skipped as not open', closed.length === 1 && /Closed/.test(closed[0].status), closed[0]);
 const f = Imp.toBoardFields(a);
 eq('last100 / annual / no vor invent', [f.last_100hr_at, f.dates.annual, f.dates.vor], [1150.4, '2026-03-01', undefined]);
-ok('GPS is an extra reminder, not a date field', !f.dates.vor && f.ads.some(x => /GPS Database/.test(x.desc)), f.ads);
+ok('GPS database update is skipped on import (not tracked)', !f.dates.vor && !f.ads.some(x => /GPS/.test(x.desc)) && f.skippedReminders.includes('GPS Database Updates'), [f.ads, f.skippedReminders]);
+ok('no vor_done in board fields or CSV', !('vor_done' in f) && !/vor_done/.test(Imp.toCsv(parsed)));
 
 const csv = Imp.toCsv(parsed);
 ok('csv has header and tail', /^tail,type,location,meter/.test(csv) && /N999ZZ/.test(csv), csv.split('\n')[0] + ' | ' + csv.split('\n')[1]);

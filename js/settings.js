@@ -3,7 +3,7 @@ var PPASettings = (function () {
   var U = window.PPAUI, V = PPAViews, S = PPAStatus, st = Store.state;
   var esc = U.esc, $ = U.$, $$ = U.$$, toast = U.toast, opt = V.opt, clone = V.clone;
   var GROUPS = ['CFI', 'Customer', 'Renter', 'Mechanic', 'Owner', 'Dispatch'];
-  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_tach', 'tach_date', 'current_hobbs', 'hobbs_date', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'vor_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
+  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_tach', 'tach_date', 'current_hobbs', 'hobbs_date', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
   var ALIASES = { 'tail number': 'tail', tailnumber: 'tail', registration: 'tail', 'n-number': 'tail', aircraft: 'tail', model: 'type', 'make/model': 'type', base: 'location', airport: 'location', 'current hobbs': 'current_hobbs', 'current tach': 'current_tach', hobbs: 'current_hobbs', tach: 'current_tach', 'hobbs time': 'current_hobbs', 'tach time': 'current_tach', hours: 'current_hours', 'current hours': 'current_hours', 'aircraft id': 'fsp_aircraft_id', aircraftid: 'fsp_aircraft_id' };
   var pendingImport = null;
 
@@ -38,12 +38,13 @@ var PPASettings = (function () {
 
       // rules
       '<div class="card" id="s-rules"><h2>Due rules & yellow thresholds</h2><table class="prev"><tr><th>Item</th><th>Interval</th><th>Turn yellow when</th></tr>' +
-      rrow('annual', 'A · Annual', 'months', 'calendar months', 'warnDays', 'days left') + rrow('vor', 'V · VOR check', 'days', 'days', 'warnDays', 'days left') +
+      rrow('annual', 'A · Annual', 'months', 'calendar months', 'warnDays', 'days left') +
       rrow('hundred', '1 · 100-hour', 'hours', 'hours', 'warnHours', 'hours left') + rrow('pitot', 'A · Alt / pitot-static', 'months', 'calendar months', 'warnDays', 'days left') +
       rrow('xpdr', 'T · Transponder', 'months', 'calendar months', 'warnDays', 'days left') + rrow('elt', 'E · ELT inspection', 'months', 'calendar months', 'warnDays', 'days left (also battery)') +
+      rrow('oil50', 'D · 50-hr oil change (non-grounding)', 'hours', 'hours', 'warnHours', 'hours left') +
       '<tr><td>D · ADs</td><td>per AD</td><td><input type="number" data-rule="ads.warnDays" value="' + R.ads.warnDays + '" style="width:90px"> days or <input type="number" data-rule="ads.warnHours" value="' + R.ads.warnHours + '" style="width:90px"> hours left</td></tr>' +
       '<tr><td>Hours freshness</td><td colspan="2">Flag "hours old" when tach/Hobbs not updated in <input type="number" data-rule="staleHoursDays" value="' + R.staleHoursDays + '" style="width:90px"> days</td></tr></table>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Defaults follow 14 CFR 91.409 (annual, 100-hr), 91.171 (VOR, 30 days), 91.411 (pitot-static, 24 cal. months), 91.413 (transponder, 24 cal. months), 91.207 (ELT, 12 cal. months). Overdue = red = GROUNDED. Missing dates show as "needs data" (yellow).</p>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Defaults follow 14 CFR 91.409 (annual, 100-hr), 91.411 (pitot-static, 24 cal. months), 91.413 (transponder, 24 cal. months), 91.207 (ELT, 12 cal. months). Overdue = red = GROUNDED, except non-grounding items like the 50-hr oil change, which stay amber. GPS / nav database updates are ignored. Missing dates show as "needs data" (yellow).</p>' +
       '<button class="btn sm" id="rdef">Reset to defaults</button></div>' +
 
       // tv
@@ -152,7 +153,7 @@ var PPASettings = (function () {
     var head = CSV_COLS.concat(['status', 'reasons']);
     var lines = [head.join(',')].concat(st.aircraft.map(function (a) {
       var d = a.dates || {};
-      return [a.tail, a.type, U.locCode(a.location), a.meter, S.meterReading(a, 'tach'), S.meterUpdated(a, 'tach'), S.meterReading(a, 'hobbs'), S.meterUpdated(a, 'hobbs'), S.meterReading(a), S.meterUpdated(a), a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, d.vor, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
+      return [a.tail, a.type, U.locCode(a.location), a.meter, S.meterReading(a, 'tach'), S.meterUpdated(a, 'tach'), S.meterReading(a, 'hobbs'), S.meterUpdated(a, 'hobbs'), S.meterReading(a), S.meterUpdated(a), a.ifr === false ? 'no' : 'yes', a.forHire === false ? 'no' : 'yes', d.annual, a.last100, d.pitot, d.xpdr, d.elt, d.eltBattery, a.statusNote, a.expectedBack, a.fspAircraftId, U.LABEL[ev[a.id].overall], ev[a.id].reasons.join('; ')].map(csvCell).join(',');
     }));
     download('ppa-fleet-' + S.todayStr() + '.csv', lines.join('\n'), 'text/csv');
   }
@@ -240,7 +241,7 @@ var PPASettings = (function () {
       S.syncMeters(a);
       if (o.last_100hr_at) { var lv = Number(o.last_100hr_at.replace(/,/g, '')); if (!isNaN(lv)) setv('last100', lv, 'last 100-hr'); }
       [['ifr', 'ifr'], ['for_hire', 'forHire']].forEach(function (p) { if (o[p[0]] !== undefined) { var y = yes(o[p[0]]); if (y !== null) setv(p[1], y, p[0]); } });
-      [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (p) {
+      [['annual_done', 'annual'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (p) {
         if (o[p[0]]) { var d = normDate(o[p[0]]); if (d === null) warn.push(tail + ': bad date "' + o[p[0]] + '" in ' + p[0]); else setv('dates.' + p[1], d, p[0]); }
       });
       if (o.status_note) setv('statusNote', o.status_note, 'note');
@@ -309,6 +310,7 @@ var PPASettings = (function () {
     parsed.aircraft.forEach(function (raw, n) {
       var f = Imp.toBoardFields(raw);
       (f.doubts || []).forEach(function (d) { warn.push(d); });
+      if ((f.skippedReminders || []).length) warn.push((f.tail || '') + ': ignored ' + f.skippedReminders.map(function (n) { return '"' + n + '"'; }).join(', ') + ' (VOR / GPS-nav database items are not tracked)');
       var tail = (f.tail || '').toUpperCase().replace(/\s/g, '');
       if (ignored().indexOf(tail.replace(/-/g, '')) >= 0) { warn.push(tail + ' skipped (on the ignore list in Settings).'); return; }
       if (/redbird|aatd|batd|\bsimulator\b|\bflight sim\b|\bftd\b|training device/i.test(String((f.type || '') + ' ' + (raw.model || raw.make || raw.description || '') + ' ' + tail))) { warn.push(tail + ' skipped (simulator, not an aircraft).'); return; }
@@ -330,14 +332,16 @@ var PPASettings = (function () {
       applyHours(f.current_hobbs, 'hobbs', f.hobbs_date, 'hobbs');
       S.syncMeters(a);
       if (f.last_100hr_at != null) setv('last100', f.last_100hr_at, 'last 100-hr');
-      [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (pair) {
+      [['annual_done', 'annual'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (pair) {
         if (f[pair[0]]) setv('dates.' + pair[1], f[pair[0]], pair[0]);
       });
       if (f.status_note && !a.statusNote) setv('statusNote', f.status_note, 'note');
       // merge reminders / ADs
       var ads = (a.ads || []).slice();
       (f.ads || []).forEach(function (nAd) {
+        if (S.isGpsUpdate(nAd)) return; // GPS / nav database updates are not tracked
         var hit = ads.filter(function (x) {
+          if (S.isOilChange(nAd) && S.isOilChange(x)) return true; // one 50-hr oil change per plane
           if (nAd.number && x.number === nAd.number) {
             var sameNum = ads.filter(function (y) { return y.number === nAd.number; });
             if (sameNum.length <= 1) return true;
