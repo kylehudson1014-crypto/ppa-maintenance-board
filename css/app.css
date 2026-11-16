@@ -160,3 +160,9 @@ input.snapok{outline:2px solid #18a352;border-color:#18a352}
 .previewbar button{background:#ffcf5a;color:#2a1600;border:0;border-radius:8px;padding:6px 10px;font-weight:800;cursor:pointer}
 .previewbar a{color:#fff;font-weight:700}
 body.tv .previewbar{font-size:12px;padding:4px 10px}
+/* Ignored ADs / reminders: own section with an obvious Restore */
+.ignsec{margin-top:16px;border:2px dashed #ffcf5a;border-radius:12px;padding:10px 12px;background:#2a2108}
+.ignsec h3{margin:0 0 8px;color:#ffe08a;font-size:17px}.ignsec h3 .sub{font-size:12px;font-weight:600;color:#e8d9a8;margin-left:6px}
+.ignrow input,.ignrow select{opacity:.6}
+.restorebtn{background:#ffcf5a!important;border-color:#ffcf5a!important;color:#2a1600!important;font-size:16px;min-height:44px;padding:10px 18px}
+.ignnote{display:inline-block;margin:0 0 10px;padding:6px 12px;border-radius:999px;background:#3a2a00;border:1px solid #ffcf5a;color:#ffe08a;font-weight:700;text-decoration:none}
