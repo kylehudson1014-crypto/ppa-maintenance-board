@@ -158,7 +158,21 @@ function appendLogRow_(sh, data, tachUrl, hobbsUrl) {
   for (var i = 0; i < headers.length; i++) {
     row.push(Object.prototype.hasOwnProperty.call(obj, headers[i]) ? obj[headers[i]] : '');
   }
-  sh.appendRow(row);
+  // Checkbox cells count as content, so appendRow would jump past them (row 1001). Write right after the last real row instead.
+  var next = lastDataRow_(sh) + 1;
+  if (next > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 50);
+  sh.getRange(next, 1, 1, row.length).setValues([row]);
+}
+
+// Last row with something in column A (Submitted); header counts as row 1.
+function lastDataRow_(sh) {
+  var n = sh.getLastRow();
+  if (n < 2) return 1;
+  var col = sh.getRange(1, 1, n, 1).getValues();
+  for (var r = n - 1; r >= 1; r--) {
+    if (String(col[r][0]).trim() !== '') return r + 1;
+  }
+  return 1;
 }
 
 // One tab per month, named like "2026-11 Nov", from the flight's date. Newest month goes first.
@@ -249,7 +263,7 @@ function applyBillingUi_(sh) {
     .setRanges([range])
     .build();
   var yellow = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=$' + letter + '2<>TRUE')
+    .whenFormulaSatisfied('=AND($A2<>"",$' + letter + '2<>TRUE)')
     .setBackground('#fff2cc')
     .setRanges([range])
     .build();
