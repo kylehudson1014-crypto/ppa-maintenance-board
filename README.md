@@ -16,5 +16,6 @@ Standalone maintenance status board for Patriot Pilot Academy: AV1ATED status, l
 * **Live mode**: paste a free Firebase (Spark) project config into `js/config.js`. Rules: `firebase/firestore.rules` (tested: `test/rules.test.mjs`, 33 checks).
 * **Email alerts**: free Google Apps Script in `alerts/` (Code.gs + js/status.js). OFF until switched on in Settings.
 * **CSV**: `template.csv`; import matches by tail number or FSP aircraft ID; blank cells never erase.
+* **FSP refresh**: Settings → Import FSP Maintenance Status Report. Upload the PDF from Flight Schedule Pro’s Maintenance Status Report; preview new/changed/unchanged aircraft and open squawks, then confirm. Existing planes are never deleted.
 
 Status logic lives in `js/status.js` (shared by the web app and the alert sender).

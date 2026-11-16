@@ -1,6 +1,6 @@
 /* Offline cache: app shell cache-first with background refresh; Firebase SDK cached at runtime. Firestore keeps its own offline copy. */
-var CACHE = 'ppa-mb-v4';
-var SHELL = ['./', 'index.html', 'css/app.css?v=4', 'js/config.js?v=4', 'js/status.js?v=4', 'js/sample.js?v=4', 'js/store.js?v=4', 'js/app.js?v=4', 'js/views.js?v=4', 'js/settings.js?v=4', 'img/ppa-logo.png', 'img/icon-192.png', 'img/icon-512.png', 'manifest.webmanifest', 'template.csv'];
+var CACHE = 'ppa-mb-v5';
+var SHELL = ['./', 'index.html', 'css/app.css?v=5', 'js/config.js?v=5', 'js/status.js?v=5', 'js/sample.js?v=5', 'js/store.js?v=5', 'js/app.js?v=5', 'js/views.js?v=5', 'js/fsp-import.js?v=5', 'js/settings.js?v=5', 'img/ppa-logo.png', 'img/icon-192.png', 'img/icon-512.png', 'manifest.webmanifest', 'template.csv'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); })); });
 self.addEventListener('fetch', function (e) {

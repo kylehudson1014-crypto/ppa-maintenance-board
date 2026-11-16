@@ -79,10 +79,11 @@ var PPASettings = (function () {
 
       // data
       '<div class="card" id="s-data"><h2>CSV import / export & backup</h2><div class="row">' +
+      '<label class="btn pri">⬆ Import FSP Maintenance Status Report<input type="file" id="fspin" accept=".pdf,application/pdf,.csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="csvout">⬇ Export fleet CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
       '<label class="btn">⬆ Import CSV<input type="file" id="csvin" accept=".csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="jsonout">⬇ Full backup (JSON)</button>' + (st.mode === 'demo' ? '<label class="btn">⬆ Restore backup<input type="file" id="jsonin" accept=".json" class="hide"></label><button class="btn" id="reset">Reload SAMPLE data</button><button class="btn bad" id="clear">Start empty (remove samples)</button>' : '') + '</div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Import matches by tail number (or FSP aircraft ID). Blank cells never erase data, so a 2-column file (tail, current_tach) just updates Tach. Use current_tach and current_hobbs for the two meters; current_hours still updates the selected 100-hr meter. Dates: YYYY-MM-DD or M/D/YYYY. Unknown locations/types are added to your lists. Column names like "Tail Number", "Hobbs", "Current Tach" are recognized.</p>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Fastest refresh: in Flight Schedule Pro open Reports → Maintenance Status Report, print/save as PDF, then upload it here. You will get a preview (new / changed / unchanged) before anything is saved. Existing planes are never deleted. Closed squawks are skipped; only open squawks are added, and duplicates are not created. ADs, 50-hour oil, GPS database, and similar extras come in as tracked reminders. Tach and Hobbs stay separate; the 100-hour meter is set from the report (tach when the 100-hour time is tach-based). CSV import still works: matches by tail number (or FSP aircraft ID); blank cells never erase data.</p>' +
       '<div id="imp">' + importPreview() + '</div></div>' +
 
       // live
@@ -191,18 +192,131 @@ var PPASettings = (function () {
   function importPreview() {
     var p = pendingImport; if (!p) return '';
     if (p.error) return '<div class="banner red">' + esc(p.error) + '</div>';
-    return '<div class="banner blue">Ready to import: <b>' + p.ops.filter(function (o) { return o.isNew; }).length + ' new</b>, <b>' + p.ops.filter(function (o) { return !o.isNew; }).length + ' updated</b>' + (p.newLocs.length ? ' · new locations: ' + esc(p.newLocs.join(', ')) : '') + (p.newTypes.length ? ' · new types: ' + esc(p.newTypes.join(', ')) : '') + '</div>' +
+    var nNew = p.ops.filter(function (o) { return o.isNew; }).length;
+    var nUpd = p.ops.filter(function (o) { return !o.isNew && o.changes && o.changes.length; }).length;
+    var nSame = p.ops.filter(function (o) { return !o.isNew && (!o.changes || !o.changes.length); }).length;
+    var nSq = (p.squawkOps || []).length;
+    var fsp = p.source === 'fsp';
+    return '<div class="banner blue">Ready to import' + (p.reportCreated ? ' (report ' + esc(p.reportCreated) + ')' : '') + ': <b>' + nNew + ' new</b>, <b>' + nUpd + ' updated</b>, <b>' + nSame + ' unchanged</b>' + (nSq ? ', <b>' + nSq + ' open squawk' + (nSq === 1 ? '' : 's') + '</b>' : '') + (p.newLocs.length ? ' · new locations: ' + esc(p.newLocs.join(', ')) : '') + (p.newTypes.length ? ' · new types: ' + esc(p.newTypes.join(', ')) : '') + '</div>' +
       (p.warn.length ? '<div class="banner">' + p.warn.map(esc).join('<br>') + '</div>' : '') +
-      '<table class="prev"><tr><th>Tail</th><th></th><th>Changes</th></tr>' + p.ops.map(function (o) { return '<tr><td>' + esc(o.a.tail) + '</td><td>' + (o.isNew ? 'NEW' : 'update') + '</td><td>' + esc(o.changes.join(', ')) + '</td></tr>'; }).join('') + '</table>' +
+      '<table class="prev"><tr><th>Tail</th><th></th><th>Changes</th>' + (fsp ? '<th>Open squawks</th>' : '') + '</tr>' + p.ops.map(function (o) {
+        var kind = o.isNew ? 'NEW' : (o.changes && o.changes.length ? 'update' : 'unchanged');
+        var sq = (o.squawks || []).map(function (x) { return x.description; }).join('; ');
+        return '<tr><td>' + esc(o.a.tail) + '</td><td>' + kind + '</td><td>' + esc((o.changes || []).join(', ') || (o.isNew ? 'all fields' : '—')) + '</td>' + (fsp ? '<td>' + esc(sq || '—') + '</td>' : '') + '</tr>';
+      }).join('') + '</table>' +
       '<div class="row" style="margin-top:8px"><button class="btn pri" id="impgo">Apply import</button><button class="btn ghost" id="impno">Cancel</button></div>';
   }
   function applyImport() {
     var p = pendingImport; if (!p || !p.ops) return;
     var s = clone(st.settings); s.locations = p.locs; s.types = p.types;
     var who = st.name || (st.user && st.user.email) || 'import';
+    var label = p.source === 'fsp' ? 'FSP import' : 'CSV import';
+    var toSave = p.ops.filter(function (o) { return o.isNew || (o.changes && o.changes.length); });
     Store.saveSettings(s).then(function () {
-      return Promise.all(p.ops.map(function (o) { o.a.log = o.a.log || []; o.a.log.unshift({ at: new Date().toISOString(), by: who, what: 'CSV import: ' + (o.isNew ? 'created' : o.changes.join(', ')) }); return Store.saveAircraft(o.a); }));
-    }).then(function () { toast('Imported ' + p.ops.length + ' aircraft'); pendingImport = null; U.render(true); }).catch(function (e) { toast(e.message, true); });
+      return Promise.all(toSave.map(function (o) { o.a.log = o.a.log || []; o.a.log.unshift({ at: new Date().toISOString(), by: who, what: label + ': ' + (o.isNew ? 'created' : o.changes.join(', ')) }); return Store.saveAircraft(o.a); }));
+    }).then(function () {
+      var sqs = p.squawkOps || [];
+      var chain = Promise.resolve();
+      sqs.forEach(function (q) {
+        chain = chain.then(function () { return Store.addSquawk(q); });
+      });
+      return chain.then(function () { return sqs.length; });
+    }).then(function (nSq) {
+      toast('Imported ' + toSave.length + ' aircraft' + (nSq ? ' and ' + nSq + ' open squawk' + (nSq === 1 ? '' : 's') : ''));
+      pendingImport = null; U.render(true);
+    }).catch(function (e) { toast(e.message, true); });
+  }
+
+  function eqv(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function squawkDup(tail, text, date, list) {
+    var n = squashSq(text);
+    return (list || []).some(function (s) {
+      return (s.tail || '').toUpperCase().replace(/-/g, '') === tail && squashSq(s.text) === n && (!date || !s.createdAt || String(s.createdAt).slice(0, 10) === date);
+    });
+  }
+  function squashSq(t) { return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+  function buildFspImport(parsed) {
+    if (!parsed || !parsed.aircraft || !parsed.aircraft.length) return { error: 'No aircraft found in that report. Use Flight Schedule Pro’s Maintenance Status Report PDF.' };
+    var Imp = window.PPAFspImport;
+    var ops = [], warn = (parsed.warnings || []).slice(), newLocs = [], newTypes = [], squawkOps = [];
+    var locs = clone(st.settings.locations || []), types = (st.settings.types || []).slice();
+    parsed.aircraft.forEach(function (raw, n) {
+      var f = Imp.toBoardFields(raw);
+      (f.doubts || []).forEach(function (d) { warn.push(d); });
+      var tail = (f.tail || '').toUpperCase().replace(/\s/g, '');
+      var ex = st.aircraft.filter(function (a) { return tail && a.tail.toUpperCase().replace(/-/g, '') === tail.replace(/-/g, ''); })[0];
+      var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, hoursUpdated: '', tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '', ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
+      var ch = [];
+      function setv(k, v, label) { if (v === null || v === undefined || v === '') return; if (!eqv(getp(a, k), v)) { setp(a, k, v); ch.push(label); } }
+      if (f.type) { if (types.indexOf(f.type) < 0) { types.push(f.type); newTypes.push(f.type); } setv('type', f.type, 'type'); }
+      if (f.location) { var L = locs.filter(function (l) { return l.code.toLowerCase() === f.location.toLowerCase() || l.name.toLowerCase() === f.location.toLowerCase(); })[0]; if (!L) { L = { id: f.location.toLowerCase().replace(/[^a-z0-9]/g, '') || PPASample.uid(), code: f.location.toUpperCase(), name: f.location }; locs.push(L); newLocs.push(L.code); } setv('location', L.id, 'location'); }
+      if (f.meter) setv('meter', f.meter, 'meter');
+      function applyHours(val, field, dateVal, label) {
+        if (val == null) return;
+        var prev = S.meterReading(a, field);
+        if (ex && prev != null && val < prev) warn.push(tail + ': ' + label + ' goes DOWN ' + prev + ' → ' + val + ' (check)');
+        setv(field, val, label);
+        if (ch.indexOf(label) >= 0) a[field + 'Updated'] = dateVal || parsed.reportCreated || S.todayStr();
+      }
+      applyHours(f.current_tach, 'tach', f.tach_date, 'tach');
+      applyHours(f.current_hobbs, 'hobbs', f.hobbs_date, 'hobbs');
+      S.syncMeters(a);
+      if (f.last_100hr_at != null) setv('last100', f.last_100hr_at, 'last 100-hr');
+      [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (pair) {
+        if (f[pair[0]]) setv('dates.' + pair[1], f[pair[0]], pair[0]);
+      });
+      if (f.status_note && !a.statusNote) setv('statusNote', f.status_note, 'note');
+      // merge reminders / ADs
+      var ads = (a.ads || []).slice();
+      (f.ads || []).forEach(function (nAd) {
+        var hit = ads.filter(function (x) {
+          if (nAd.number && x.number === nAd.number) {
+            var sameNum = ads.filter(function (y) { return y.number === nAd.number; });
+            if (sameNum.length <= 1) return true;
+            return String(x.desc || '').toLowerCase() === String(nAd.desc || '').toLowerCase();
+          }
+          return !nAd.number && String(x.desc || '').toLowerCase() === String(nAd.desc || '').toLowerCase();
+        })[0];
+        if (!hit) {
+          var add = { id: PPASample.uid(), number: nAd.number || '', desc: nAd.desc || '', intervalMonths: nAd.intervalMonths, intervalDays: nAd.intervalDays, intervalHours: nAd.intervalHours, lastDoneDate: nAd.lastDoneDate || '', lastDoneHours: nAd.lastDoneHours, nextDueDate: nAd.nextDueDate || '', nextDueHours: nAd.nextDueHours };
+          ads.push(add); ch.push('AD ' + (nAd.number || nAd.desc));
+        } else {
+          var changed = false;
+          ['intervalHours', 'intervalDays', 'intervalMonths', 'lastDoneHours', 'nextDueHours'].forEach(function (k) {
+            if (nAd[k] != null && nAd[k] !== '' && hit[k] !== nAd[k]) { hit[k] = nAd[k]; changed = true; }
+          });
+          ['lastDoneDate', 'nextDueDate', 'desc', 'number'].forEach(function (k) {
+            if (nAd[k] && hit[k] !== nAd[k]) { hit[k] = nAd[k]; changed = true; }
+          });
+          if (changed) ch.push('AD ' + (nAd.number || nAd.desc));
+        }
+      });
+      if (JSON.stringify(ads) !== JSON.stringify(a.ads || [])) a.ads = ads;
+      var openSq = (f.openSquawks || []).filter(function (sq) {
+        var all = (st.squawks || []).concat(st.closedSquawks || []);
+        if (squawkDup(tail, sq.description, sq.date, all)) { warn.push(tail + ': skipped duplicate squawk "' + sq.description + '"'); return false; }
+        return true;
+      });
+      openSq.forEach(function (sq) {
+        squawkOps.push({ aircraftId: a.id, tail: a.tail, text: sq.description, severity: sq.groundable ? 'grounding' : 'open', grounding: !!sq.groundable, status: 'open', reportedBy: sq.reportedBy || 'FSP import', createdAt: (sq.date || parsed.reportCreated || S.todayStr()) + 'T12:00:00' });
+        ch.push('open squawk');
+      });
+      ops.push({ a: a, isNew: !ex, changes: ch, squawks: openSq });
+    });
+    return { source: 'fsp', ops: ops, warn: warn, newLocs: newLocs, newTypes: newTypes, locs: locs, types: types, squawkOps: squawkOps, reportCreated: parsed.reportCreated || '' };
+  }
+
+  function ingestFspFile(file) {
+    var name = (file.name || '').toLowerCase();
+    if (name.endsWith('.csv') || file.type === 'text/csv') {
+      return file.text().then(function (t) { pendingImport = buildImport(t); pendingImport.source = pendingImport.source || 'csv'; });
+    }
+    if (!window.PPAFspImport) return Promise.reject(new Error('FSP importer failed to load. Refresh the page and try again.'));
+    toast('Reading PDF…');
+    return file.arrayBuffer().then(function (buf) {
+      return PPAFspImport.loadPdfjs().then(function (lib) { return PPAFspImport.parsePdfBuffer(buf, lib); });
+    }).then(function (parsed) { pendingImport = buildFspImport(parsed); });
   }
 
   function bind() {
@@ -241,6 +355,10 @@ var PPASettings = (function () {
     // data
     $('#csvout').onclick = exportCSV;
     $('#csvin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { pendingImport = buildImport(t); U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }); };
+    if ($('#fspin')) $('#fspin').onchange = function () {
+      var f = this.files[0], inp = this; if (!f) return;
+      ingestFspFile(f).then(function () { U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }).catch(function (e) { toast((e && e.message) || String(e), true); }).then(function () { inp.value = ''; });
+    };
     if ($('#impgo')) $('#impgo').onclick = applyImport;
     if ($('#impno')) $('#impno').onclick = function () { pendingImport = null; U.render(true); };
     $('#jsonout').onclick = function () { download('ppa-maint-backup-' + S.todayStr() + '.json', JSON.stringify({ settings: st.settings, alerts: st.alerts, aircraft: st.aircraft, squawks: st.squawks, closedSquawks: st.closedSquawks, priv: st.priv, roles: st.roles }, null, 1), 'application/json'); };
@@ -248,5 +366,5 @@ var PPASettings = (function () {
     if ($('#reset')) $('#reset').onclick = function () { if (confirm('Replace everything on this device with fresh SAMPLE data?')) { Store.resetDemo(); toast('Sample data reloaded'); } };
     if ($('#clear')) $('#clear').onclick = function () { if (confirm('Remove all sample aircraft and squawks on this device? (Settings stay.)')) { Store.clearDemo(); toast('Empty board ready'); } };
   }
-  return { view: view, buildImport: buildImport, parseCSV: parseCSV };
+  return { view: view, buildImport: buildImport, buildFspImport: buildFspImport, parseCSV: parseCSV };
 })();
