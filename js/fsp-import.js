@@ -374,7 +374,9 @@ var PPAFspImport = (function () {
     if (/^transponder\b/.test(n)) return 'xpdr';
     if (/^elt\s+battery\b/.test(n)) return 'eltBattery';
     if (/^elt\b/.test(n)) return 'elt';
+    // VOR checks are no longer tracked, and GPS / nav database updates are ignored (Chad, 11/16/2026).
     if (/\bvor\b/.test(n) && !/gps\s*\/?\s*nav/i.test(n)) return 'vor';
+    if (/\bgps\b|nav\s*data|navigation\s*data|\bnav\s*db\b|\bdatabase\b|\bnavdata\b|jeppesen/i.test(name)) return 'gps';
     if (/^ad\s+/i.test(name)) return 'ad';
     return 'extra';
   }
@@ -432,14 +434,14 @@ var PPAFspImport = (function () {
   }
 
   function toBoardFields(a) {
-    var dates = {}, ads = [], doubts = (a.doubts || []).slice();
+    var dates = {}, ads = [], doubts = (a.doubts || []).slice(), skipped = [];
     var last100 = null, statusNote = a.inactive ? 'Inactive' : '';
     var overdue = [];
     a.reminders.forEach(function (r) {
       var kind = classifyReminder(r.name);
       if (kind === 'hundred') { last100 = r.lastTime; if (r.expired) overdue.push(r.name); return; }
       if (kind === 'annual' && r.lastDate) dates.annual = r.lastDate;
-      else if (kind === 'vor' && r.lastDate) dates.vor = r.lastDate;
+      else if (kind === 'vor' || kind === 'gps') { skipped.push(r.name); return; }
       else if (kind === 'pitot' && r.lastDate) dates.pitot = r.lastDate;
       else if (kind === 'xpdr' && r.lastDate) dates.xpdr = r.lastDate;
       else if (kind === 'elt' && r.lastDate) dates.elt = r.lastDate;
@@ -466,9 +468,6 @@ var PPAFspImport = (function () {
         } else if (r.dueInHours != null && cur != null && r.lastTime == null) {
           ad.nextDueHours = Math.round((cur + r.dueInHours) * 10) / 10;
         }
-        if (kind === 'extra' && /gps\s*\/?\s*nav/i.test(r.name)) {
-          doubts.push(a.tail + ': "' + r.name + '" was imported as a tracked reminder, not the VOR box — confirm if this is PPA\'s VOR check');
-        }
         ads.push(ad);
       }
       if (r.expired) overdue.push(r.name);
@@ -487,7 +486,6 @@ var PPAFspImport = (function () {
       ifr: '',
       for_hire: '',
       annual_done: dates.annual || '',
-      vor_done: dates.vor || '',
       pitot_static_done: dates.pitot || '',
       transponder_done: dates.xpdr || '',
       elt_done: dates.elt || '',
@@ -497,6 +495,7 @@ var PPAFspImport = (function () {
       fsp_aircraft_id: '',
       dates: dates,
       ads: ads,
+      skippedReminders: skipped,
       openSquawks: openSquawks,
       hoursTo100: a.hoursTo100,
       overdueNames: overdue,
@@ -509,14 +508,14 @@ var PPAFspImport = (function () {
   }
 
   function csvCell(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_tach', 'tach_date', 'current_hobbs', 'hobbs_date', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'vor_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
+  var CSV_COLS = ['tail', 'type', 'location', 'meter', 'current_tach', 'tach_date', 'current_hobbs', 'hobbs_date', 'current_hours', 'hours_date', 'ifr', 'for_hire', 'annual_done', 'last_100hr_at', 'pitot_static_done', 'transponder_done', 'elt_done', 'elt_battery_expires', 'status_note', 'expected_back', 'fsp_aircraft_id'];
   function toCsv(parsed) {
     var rows = [CSV_COLS.join(',')];
     (parsed.aircraft || []).forEach(function (a) {
       var f = toBoardFields(a);
       var hours = f.meter === 'hobbs' ? f.current_hobbs : f.current_tach;
       var hoursDate = f.meter === 'hobbs' ? f.hobbs_date : f.tach_date;
-      rows.push([f.tail, f.type, f.location, f.meter, f.current_tach, f.tach_date, f.current_hobbs, f.hobbs_date, hours, hoursDate, f.ifr, f.for_hire, f.annual_done, f.vor_done, f.last_100hr_at, f.pitot_static_done, f.transponder_done, f.elt_done, f.elt_battery_expires, f.status_note, f.expected_back, f.fsp_aircraft_id].map(csvCell).join(','));
+      rows.push([f.tail, f.type, f.location, f.meter, f.current_tach, f.tach_date, f.current_hobbs, f.hobbs_date, hours, hoursDate, f.ifr, f.for_hire, f.annual_done, f.last_100hr_at, f.pitot_static_done, f.transponder_done, f.elt_done, f.elt_battery_expires, f.status_note, f.expected_back, f.fsp_aircraft_id].map(csvCell).join(','));
     });
     return rows.join('\n') + '\n';
   }

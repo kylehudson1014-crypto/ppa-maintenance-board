@@ -137,7 +137,7 @@ var PPAViews = (function () {
         (sqDone.sheetError ? '<div class="banner">' + esc(sqDone.sheetError) + '</div>' : '') +
         '<div class="card"><h2>' + (sqDone.reportError && !sqDone.text ? 'Report not saved' : '✓ Recorded for ' + esc(sqDone.tail)) + '</h2>' +
         (sqDone.report && !sqDone.reportError ? '<p>' + reportLine(sqDone.report) + '</p>' : '') +
-        (sqDone.report && !sqDone.reportError ? '<p class="sub" style="color:var(--mute)">' + (sqDone.sheetSkipped ? 'Saved to the flight log on the board. Connect a billing Sheet in Settings to send rows there automatically.' : (sqDone.sheetError ? 'The report is saved on the board. An editor can resend it to the billing Sheet from Settings.' : 'Saved to the flight log. If the billing Sheet is connected, this row was also sent (an editor can resend it from Settings if it does not show up).')) + '</p>' : '') +
+        (sqDone.report && !sqDone.reportError ? '<p class="sub" style="color:var(--mute)">' + (Store.preview ? '🧪 TEST PREVIEW — this report was NOT saved to the live board and NOT sent to the Flight Log Sheet.' : sqDone.sheetSkipped ? 'Saved to the flight log on the board. Connect a billing Sheet in Settings to send rows there automatically.' : (sqDone.sheetError ? 'The report is saved on the board. An editor can resend it to the billing Sheet from Settings.' : 'Saved to the flight log. If the billing Sheet is connected, this row was also sent (an editor can resend it from Settings if it does not show up).')) + '</p>' : '') +
         (sqDone.text ? '<p>Squawk: "' + esc(sqDone.text) + '"' + (e0 ? ' — the board now shows <span class="ostat s-' + e0.overall + '">' + U.LABEL[e0.overall] + '</span>' : '') + '</p>' : '<p>No squawk filed.</p>') +
         '<button class="btn pri big" id="again">Submit another</button><br><br><a class="btn big ghost" href="#board">See fleet status</a></div></div>';
       $('#again').onclick = function () { sqDone = null; sqDraft = emptyDraft(); U.render(true); }; return;
@@ -466,6 +466,14 @@ var PPAViews = (function () {
     function fld(path, type, extra) { var v = getPath(a, path); return '<input type="' + type + '" data-f="' + path + '" value="' + esc(v == null ? '' : v) + '"' + (extra || '') + '>'; }
     function chk(path, label) { return '<label class="chk"><input type="checkbox" data-f="' + path + '"' + (getPath(a, path) ? ' checked' : '') + '> ' + label + '</label>'; }
     var it = {}; e.items.forEach(function (i) { it[i.key] = i; });
+    var adList = S.trackedADs(a, R), ignoredN = adList.filter(S.isIgnoredAD).length;
+    var adOrder = adList.map(function (x, k) { return k; }).sort(function (x, y) { return (S.isIgnoredAD(adList[x]) ? 1 : 0) - (S.isIgnoredAD(adList[y]) ? 1 : 0) || x - y; });
+    // Editing the default 50-hr oil change saves it onto the aircraft as a real item.
+    function adAt(c, k) {
+      c.ads = c.ads || [];
+      if (k >= c.ads.length) { var v = S.defaultOil50(c, R); delete v.virtual; delete v.assumedFrom100; v.id = PPASample.uid(); c.ads.push(v); return c.ads[c.ads.length - 1]; }
+      return c.ads[k];
+    }
     function itemRow(key, inner, doneBtn) {
       var i = it[key];
       return '<div class="itemrow s-' + i.state + '"><div class="lab"><b>' + i.letter + '</b>' + esc(i.short) + '</div><div>' + inner + '</div><div>' + doneBtn + '</div><div>' + chkNA(key) + '</div>' +
@@ -496,24 +504,24 @@ var PPAViews = (function () {
         var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
         return '<label class="f">Current ' + meterName(m) + '<input type="number" step="0.1" inputmode="decimal" data-f="' + m + '" value="' + esc(hrsVal(a, m)) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + '">Updated ' + (ud ? S.niceDate(ud) : 'never') + '</span></label>';
       }).join('') + '</div>' +
-      '<div class="row">' + chk('ifr', 'IFR certified (tracks VOR + pitot-static)') + chk('forHire', 'Used for hire / instruction (100-hr applies)') + '</div></div>' +
+      '<div class="row">' + chk('ifr', 'IFR certified (tracks pitot-static)') + chk('forHire', 'Used for hire / instruction (100-hr applies)') + '</div></div>' +
 
       reportsCard(id) +
 
-      '<div class="card"><h2>A V 1 A T E D</h2>' +
+      '<div class="card"><h2>A 1 A T E D</h2>' +
       dateItem('annual', 'Annual — last done') +
-      dateItem('vor', 'VOR check — last done') +
       itemRow('hundred', '<label class="f">Last 100-hr done at (' + esc(S.meterOf(a)) + ')' + fld('last100', 'number', ' step="0.1" inputmode="decimal"') + '</label>', '<button class="btn ok" data-done="hundred">✓ Done at ' + esc(reading(a) == null ? '?' : reading(a)) + '</button>') +
       dateItem('pitot', 'Altimeter/pitot-static (91.411) — last done') +
       dateItem('xpdr', 'Transponder (91.413) — last done') +
       itemRow('elt', '<div class="row"><label class="f">ELT inspection — last done' + fld('dates.elt', 'date') + '</label><label class="f">ELT battery expires' + fld('dates.eltBattery', 'date') + '</label></div>', '<button class="btn ok" data-done="elt">✓ Inspected today</button>') +
-      itemRow('ads', '<span class="sub" style="color:var(--mute)">' + (a.ads || []).length + ' AD(s) tracked below. The worst one sets this color.</span>', '') +
+      itemRow('ads', '<span class="sub" style="color:var(--mute)">' + adList.length + ' item(s) below' + (ignoredN ? ' (' + ignoredN + ' ignored)' : '') + '. The worst tracked one sets this color.</span>', '') +
       '<p class="sub" style="color:var(--mute);font-size:12px">Calendar-month items are due through the last day of the month (e.g. annual done Mar 10 → due Mar 31 next year). Yellow thresholds are in Settings. 100-hr: the 10-hour overfly allowance (91.409(b)) is info only and never extends the due on this board.</p></div>' +
 
-      '<div class="card"><h2>D · Airworthiness Directives</h2><div class="listed">' + (a.ads || []).map(function (ad, k) {
-        var ae = (it.ads.ads || []).filter(function (x) { return x.ad.id === ad.id; })[0];
+      '<div class="card"><h2>D · ADs &amp; tracked reminders</h2><p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">Includes the 50-hr oil change (non-grounding). Tap <b>Ignore</b> to stop tracking an item without deleting it; FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.map(function (k) {
+        var ad = adList[k], ign = S.isIgnoredAD(ad), ng = ad.nonGrounding || (S.isOilChange(ad) && ad.nonGrounding !== false);
+        var ae = ign ? null : (it.ads.ads || []).filter(function (x) { return x.ad.id === ad.id; })[0];
         var unit = ad.intervalMonths ? 'months' : ad.intervalDays ? 'days' : '';
-        return '<div class="li" style="flex-direction:column;align-items:stretch"><div class="row">' + (ae ? '<span class="chip s-' + ae.state + '">' + esc(ae.value) + '</span>' : '') +
+        return '<div class="li" style="flex-direction:column;align-items:stretch' + (ign ? ';opacity:.55' : '') + '"><div class="row">' + (ign ? '<span class="chip s-na">IGNORED</span>' : ae ? '<span class="chip s-' + ae.state + '">' + esc(ae.value) + '</span>' : '') + (ad.virtual ? '<span class="chip s-na">default · not saved yet</span>' : '') +
           '<label class="f">AD number<input type="text" data-ad="' + k + '.number" value="' + esc(ad.number || '') + '" placeholder="2011-10-09"></label>' +
           '<label class="f" style="flex:2">Description<input type="text" data-ad="' + k + '.desc" value="' + esc(ad.desc || '') + '"></label></div><div class="row">' +
           '<label class="f">Repeats every<input type="number" data-ad="' + k + '.intervalN" value="' + esc(ad.intervalMonths || ad.intervalDays || '') + '"></label>' +
@@ -523,8 +531,8 @@ var PPAViews = (function () {
           '<label class="f">Last done at hours<input type="number" step="0.1" data-ad="' + k + '.lastDoneHours" value="' + esc(ad.lastDoneHours == null ? '' : ad.lastDoneHours) + '"></label></div><div class="row">' +
           '<label class="f">One-time: next due date<input type="date" data-ad="' + k + '.nextDueDate" value="' + esc(ad.nextDueDate || '') + '"></label>' +
           '<label class="f">One-time: next due hours<input type="number" step="0.1" data-ad="' + k + '.nextDueHours" value="' + esc(ad.nextDueHours == null ? '' : ad.nextDueHours) + '"></label>' +
-          '<label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-adng="' + k + '"' + (ad.nonGrounding ? ' checked' : '') + '> Non-grounding (overdue shows amber, plane stays available)</label>' +
-          '<button class="btn ok" data-addone="' + k + '">✓ Complied today</button><button class="iconbtn" data-adrm="' + k + '" title="Remove">✕</button></div>' + (ae ? '<div class="sub" style="color:#cfdcf0;font-size:13px">' + esc(ae.detail) + '</div>' : '') + '</div>';
+          '<label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-adng="' + k + '"' + (ng ? ' checked' : '') + '> Non-grounding (overdue shows amber, plane stays available)</label>' +
+          (ign ? '' : '<button class="btn ok" data-addone="' + k + '">✓ Complied today</button>') + '<button class="btn sm" data-adign="' + k + '">' + (ign ? '↩ Restore' : '🚫 Ignore') + '</button>' + (ad.virtual ? '' : '<button class="iconbtn" data-adrm="' + k + '" title="Remove">✕</button>') + '</div>' + (ign ? '<div class="sub" style="color:var(--mute);font-size:13px">Ignored — not counted in status or shown on the fleet view' + (S.isGpsUpdate(ad) && ad.ignored !== true ? ' (GPS / nav database update)' : '') + '.</div>' : ae ? '<div class="sub" style="color:#cfdcf0;font-size:13px">' + esc(ae.detail) + '</div>' : '') + '</div>';
       }).join('') + '</div><br><button class="btn" id="addad">+ Add AD</button></div>' +
 
       '<div class="card"><h2>Squawks (' + sqs.length + ' open)</h2><div class="listed">' + sqs.map(function (s) {
@@ -573,7 +581,7 @@ var PPAViews = (function () {
       el.onchange = function () {
         var p = el.dataset.ad.split('.'), k = +p[0], f = p[1], v = el.type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
         save(function (c) {
-          var ad = c.ads[k];
+          var ad = adAt(c, k);
           if (f === 'intervalN' || f === 'intervalUnit') {
             var n = f === 'intervalN' ? v : (ad.intervalMonths || ad.intervalDays || null), u = f === 'intervalUnit' ? v : (ad.intervalMonths ? 'months' : ad.intervalDays ? 'days' : (n ? 'months' : ''));
             ad.intervalMonths = u === 'months' ? n : null; ad.intervalDays = u === 'days' ? n : null;
@@ -583,9 +591,10 @@ var PPAViews = (function () {
       };
     });
     $('#addad').onclick = function () { save(function (c) { c.ads = c.ads || []; c.ads.push({ id: PPASample.uid(), number: '', desc: '', intervalMonths: null, intervalDays: null, intervalHours: null, lastDoneDate: '', lastDoneHours: null, nextDueDate: '', nextDueHours: null }); }, 'AD added — fill in the details'); };
-    $$('[data-adng]').forEach(function (el) { el.onchange = function () { save(function (c) { var ad = c.ads[+el.dataset.adng]; ad.nonGrounding = el.checked; logEntry(c, 'AD ' + (ad.number || ad.desc || '') + (el.checked ? ' set non-grounding' : ' set grounding')); }); }; });
+    $$('[data-adng]').forEach(function (el) { el.onchange = function () { save(function (c) { var ad = adAt(c, +el.dataset.adng); ad.nonGrounding = el.checked; logEntry(c, 'AD ' + (ad.number || ad.desc || '') + (el.checked ? ' set non-grounding' : ' set grounding')); }); }; });
+    $$('[data-adign]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = adAt(c, +b.dataset.adign); var was = S.isIgnoredAD(ad); ad.ignored = !was; logEntry(c, (ad.number || ad.desc || 'AD') + (was ? ' restored (tracked again)' : ' ignored')); }, 'Saved ✓'); }; });
     $$('[data-adrm]').forEach(function (b) { b.onclick = function () { if (!confirm('Remove this AD from tracking?')) return; save(function (c) { var r = c.ads.splice(+b.dataset.adrm, 1)[0]; logEntry(c, 'AD removed ' + (r.number || '')); }); }; });
-    $$('[data-addone]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = c.ads[+b.dataset.addone]; ad.lastDoneDate = today(); var cur = reading(c); if (cur != null) ad.lastDoneHours = cur; if (!ad.intervalMonths && !ad.intervalDays && !ad.intervalHours) { ad.nextDueDate = ''; ad.nextDueHours = null; ad.inactive = true; } logEntry(c, 'AD ' + (ad.number || '') + ' complied ' + today()); }, '✓ AD complied — next due rolled forward'); }; });
+    $$('[data-addone]').forEach(function (b) { b.onclick = function () { save(function (c) { var ad = adAt(c, +b.dataset.addone); ad.lastDoneDate = today(); var cur = reading(c); if (cur != null) ad.lastDoneHours = cur; if (!ad.intervalMonths && !ad.intervalDays && !ad.intervalHours) { ad.nextDueDate = ''; ad.nextDueHours = null; ad.inactive = true; } logEntry(c, 'AD ' + (ad.number || '') + ' complied ' + today()); }, '✓ AD complied — next due rolled forward'); }; });
     // squawks
     $$('[data-sqsev]').forEach(function (el) { el.onchange = function () { var s = clone(st.squawks.filter(function (x) { return x.id === el.dataset.sqsev; })[0]); s.severity = el.value; Store.updateSquawk(s).then(function () { toast('Squawk updated'); U.render(true); }); }; });
     $$('[data-fix]').forEach(function (b) { b.onclick = function () { var fix = prompt('What was done? (optional)', ''); if (fix === null) return; var s = clone(st.squawks.filter(function (x) { return x.id === b.dataset.fix; })[0]); s.status = 'closed'; s.fix = fix; s.closedAt = new Date().toISOString(); s.closedBy = who(); Store.updateSquawk(s).then(function () { toast('Squawk cleared'); U.render(true); }); }; });

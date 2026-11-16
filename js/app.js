@@ -101,10 +101,10 @@
     var locName = p.loc ? (locById((st.settings.locations || []).filter(function (l) { return l.code.toLowerCase() === p.loc.toLowerCase(); }).map(function (l) { return l.id; })[0]) || {}).name : '';
     app.innerHTML = (tv.watermark !== false ? '<div class="wm"></div>' : '') +
       '<div class="tvhead">' + (tv.logo !== false ? '<div class="logo-plate"><img src="img/ppa-logo.png" alt="Patriot Pilot Academy"></div>' : '') +
-      '<div><h1>FLEET MAINTENANCE STATUS' + (p.loc ? ' · ' + esc(p.loc.toUpperCase()) : '') + '</h1><div class="sub">' + esc(locName || 'All locations') + ' · A V 1 A T E D' + (st.mode === 'demo' ? ' · <b style="color:#ffcf5a">SAMPLE DATA — DEMO</b>' : '') + '</div></div>' +
+      '<div><h1>FLEET MAINTENANCE STATUS' + (p.loc ? ' · ' + esc(p.loc.toUpperCase()) : '') + '</h1><div class="sub">' + esc(locName || 'All locations') + ' · A 1 A T E D' + (st.mode === 'demo' ? ' · <b style="color:#ffcf5a">SAMPLE DATA — DEMO</b>' : '') + '</div></div>' +
       sumChips(c) + '<div class="tvclock"><div class="t" id="tvclock"></div><div class="u" id="tvupd"></div></div></div>' +
       '<div class="tvgrid" style="--k:' + scale.toFixed(2) + ';grid-template-columns:repeat(' + cols + ',1fr);grid-template-rows:repeat(' + rows + ',' + Math.floor(tileH) + 'px)">' + (show.map(function (a) { return tileHTML(a, ev[a.id], { squawkText: tv.showSquawkText !== false }); }).join('') || '<div class="card">No aircraft yet. Add them in Edit.</div>') + '</div>' +
-      '<div class="tvfoot"><span class="legend"><span class="chip s-ok">current</span><span class="chip s-due">coming due</span><span class="chip s-over">overdue</span><span class="chip s-na">N/A</span></span><span><b>A</b>nnual · <b>V</b>OR · <b>1</b>00-hr · <b>A</b>ltimeter/pitot · <b>T</b>ransponder · <b>E</b>LT · A<b>D</b>s</span><span>Tracking aid only — aircraft logbooks are the legal record.</span><span class="dots">' + (pages > 1 ? 'Page ' + (tvPage + 1) + ' / ' + pages : '') + '</span></div>';
+      '<div class="tvfoot"><span class="legend"><span class="chip s-ok">current</span><span class="chip s-due">coming due</span><span class="chip s-over">overdue</span><span class="chip s-na">N/A</span></span><span><b>A</b>nnual · <b>1</b>00-hr · <b>A</b>ltimeter/pitot · <b>T</b>ransponder · <b>E</b>LT · A<b>D</b>s + 50-hr oil</span><span>Tracking aid only — aircraft logbooks are the legal record.</span><span class="dots">' + (pages > 1 ? 'Page ' + (tvPage + 1) + ' / ' + pages : '') + '</span></div>';
     function tick() {
       var el = $('#tvclock'); if (!el) return;
       var d = new Date(); el.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -253,6 +253,14 @@
   document.addEventListener('pointerup', function () { setTimeout(function () { ptrDown = false; }, 50); }, true);
   function soon() { clearTimeout(rt); rt = setTimeout(function () { if (ptrDown) return soon(); render(false); }, 250); }
   Store.on(soon);
-  document.addEventListener('DOMContentLoaded', function () { Store.init().then(function () { render(true); }); });
+  function previewBar() {
+    if (!Store.preview || document.getElementById('previewbar')) return;
+    document.title = 'TEST · ' + document.title;
+    var b = document.createElement('div'); b.id = 'previewbar'; b.className = 'previewbar';
+    b.innerHTML = '<b>🧪 TEST / PREVIEW</b> <span>Real fleet data, read-only. Edits and reports here are <b>NOT saved</b> to the live board or the Flight Log Sheet (kept on this device only).</span> <button type="button" id="pvreset">Reset test changes</button> <a href="https://kylehudson1014-crypto.github.io/ppa-maintenance-board/">Live board ↗</a>';
+    document.body.insertBefore(b, document.body.firstChild);
+    document.getElementById('pvreset').onclick = function () { if (confirm('Throw away all test changes on this device?')) Store.resetPreview(); };
+  }
+  document.addEventListener('DOMContentLoaded', function () { previewBar(); Store.init().then(function () { render(true); }); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 })();
