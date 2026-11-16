@@ -130,7 +130,8 @@ var Store = (function () {
       var nm = String(name || '').trim().slice(0, 80);
       if (!nm) return Promise.reject(new Error('Name is required'));
       if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return Promise.reject(new Error('Enter a valid email'));
-      if (!password || String(password).length < 6) return Promise.reject(new Error('Password must be at least 6 characters'));
+      var alreadyIn = (st.user && st.user.email === e) || (auth && auth.currentUser && normEmail(auth.currentUser.email) === e);
+      if (!alreadyIn && (!password || String(password).length < 6)) return Promise.reject(new Error('Password must be at least 6 characters'));
       var doc = { name: nm, email: e, requestedAt: now(), status: 'pending' };
       if (st.mode === 'demo') {
         st.accessRequests = (st.accessRequests || []).filter(function (x) { return x.email !== e; });
@@ -139,7 +140,9 @@ var Store = (function () {
         demoSave(); emit();
         return Promise.resolve(doc);
       }
-      return auth.createUserWithEmailAndPassword(e, password).then(function () {
+      var signedInAs = auth.currentUser && normEmail(auth.currentUser.email) === e;
+      var start = signedInAs ? Promise.resolve() : auth.createUserWithEmailAndPassword(e, password);
+      return start.then(function () {
         return db.doc('accessRequests/' + e).set(doc);
       }).then(function () {
         st.myAccessRequest = doc; emit(); return doc;

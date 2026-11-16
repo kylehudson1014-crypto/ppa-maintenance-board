@@ -210,7 +210,11 @@
     }
     remember('afterLogin', route);
     if (!st.user) { location.hash = '#login'; return true; }
-    app.innerHTML = topbar('No access') + '<div class="wrap"><div class="card"><h2>Your account (' + esc(st.user.email) + ') doesn\'t have access to this screen.</h2><p>Ask the owner to add you under Settings → People &amp; roles, or <a href="#request">request access</a>.</p><a class="btn" href="#logout">Sign out</a></div></div>';
+    app.innerHTML = topbar('No access') + '<div class="wrap" style="max-width:520px"><div class="card"><h2>Your account (' + esc(st.user.email) + ') doesn\'t have access to this screen.</h2><p>You can request access here. An editor will approve you under Settings → People &amp; roles.</p><button class="btn pri" id="reqnow">Request access</button> <a class="btn" href="#logout">Sign out</a></div></div>';
+    if ($('#reqnow')) $('#reqnow').onclick = function () {
+      var nm = st.name || (st.user.email || '').split('@')[0];
+      Store.requestAccess(nm, st.user.email, '').then(function () { window.PPAUI.render(true); }).catch(function (e) { toast(e.message, true); });
+    };
     return true;
   }
 
