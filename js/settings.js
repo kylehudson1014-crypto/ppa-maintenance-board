@@ -41,7 +41,7 @@ var PPASettings = (function () {
       rrow('annual', 'A · Annual', 'months', 'calendar months', 'warnDays', 'days left') +
       rrow('hundred', '1 · 100-hour', 'hours', 'hours', 'warnHours', 'hours left') + rrow('pitot', 'A · Alt / pitot-static', 'months', 'calendar months', 'warnDays', 'days left') +
       rrow('xpdr', 'T · Transponder', 'months', 'calendar months', 'warnDays', 'days left') + rrow('elt', 'E · ELT inspection', 'months', 'calendar months', 'warnDays', 'days left (also battery)') +
-      rrow('oil50', 'D · 50-hr oil change (non-grounding)', 'hours', 'hours', 'warnHours', 'hours left') +
+      rrow('oil50', '50 · 50-hr oil change (non-grounding)', 'hours', 'hours', 'warnHours', 'hours left') +
       '<tr><td>D · ADs</td><td>per AD</td><td><input type="number" data-rule="ads.warnDays" value="' + R.ads.warnDays + '" style="width:90px"> days or <input type="number" data-rule="ads.warnHours" value="' + R.ads.warnHours + '" style="width:90px"> hours left</td></tr>' +
       '<tr><td>Hours freshness</td><td colspan="2">Flag "hours old" when tach/Hobbs not updated in <input type="number" data-rule="staleHoursDays" value="' + R.staleHoursDays + '" style="width:90px"> days</td></tr></table>' +
       '<p class="sub" style="color:var(--mute);font-size:12px">Defaults follow 14 CFR 91.409 (annual, 100-hr), 91.411 (pitot-static, 24 cal. months), 91.413 (transponder, 24 cal. months), 91.207 (ELT, 12 cal. months). Overdue = red = GROUNDED, except non-grounding items like the 50-hr oil change, which stay amber. GPS / nav database updates are ignored. Missing dates show as "needs data" (yellow).</p>' +

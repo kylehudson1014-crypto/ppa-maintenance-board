@@ -19,18 +19,20 @@ ok('old VOR date does not affect status', !item(e, 'vor') && e.overall === 'ok',
 
 // 2. default 50-hr oil change
 e = ev(plane());
-let ads = item(e, 'ads');
-ok('virtual oil change tracked when none exists', ads.ads.length === 1 && ads.ads[0].ad.virtual && ads.ads[0].ad.kind === 'oil50', ads);
-ok('oil due at last100 + 50 (1010), 10 h left -> ok', ads.ads[0].dueHours === 1010 && ads.state === 'ok', ads.ads[0]);
+let oil = item(e, 'oil50');
+ok('"50" letter follows D', S.ITEMS.map(i => i.letter).join(' ') === 'A 1 A T E D 50' && oil.letter === '50' && oil.label === '50-hr oil change');
+ok('virtual oil change tracked when none exists', oil.ads.length === 1 && oil.ads[0].ad.virtual && oil.ads[0].ad.kind === 'oil50', oil);
+ok('oil not counted under D', item(e, 'ads').state === 'none' && item(e, 'ads').ads.length === 0, item(e, 'ads'));
+ok('oil due at last100 + 50 (1010), 10 h left -> ok', oil.ads[0].dueHours === 1010 && oil.state === 'ok', oil.ads[0]);
 e = ev(plane({ tach: 1007 }));
-ok('3 h left -> amber due', item(e, 'ads').state === 'due' && e.overall === 'due', e.reasons);
+ok('3 h left -> amber due', item(e, 'oil50').state === 'due' && e.overall === 'due', e.reasons);
 e = ev(plane({ tach: 1030 }));
-ok('overdue oil change is amber, never grounds', item(e, 'ads').state === 'due' && e.overall === 'due' && /50-hr oil OVERDUE \(non-grounding\)/.test(e.reasons.join(' ')), e.reasons);
+ok('overdue oil change is amber, never grounds', item(e, 'oil50').state === 'due' && e.overall === 'due' && /50-hr oil OVERDUE \(non-grounding\)/.test(e.reasons.join(' ')), e.reasons);
 e = ev(plane({ last100: null }));
-ok('no starting point -> neutral, not needs-data', item(e, 'ads').state === 'none' && !e.reasons.some(r => /ADs/.test(r)), [item(e, 'ads'), e.reasons]);
+ok('no starting point -> neutral, not needs-data', item(e, 'oil50').state === 'none' && !e.reasons.some(r => /oil/.test(r)), [item(e, 'oil50'), e.reasons]);
 const fspOil = { id: 'x1', number: '', desc: '50 Hour Oil Change', intervalHours: 50, lastDoneHours: 990, nonGrounding: true };
 e = ev(plane({ ads: [fspOil] }));
-ok('existing FSP oil change -> no duplicate', item(e, 'ads').ads.length === 1 && item(e, 'ads').ads[0].ad.id === 'x1');
+ok('existing FSP oil change -> no duplicate', item(e, 'oil50').ads.length === 1 && item(e, 'oil50').ads[0].ad.id === 'x1' && item(e, 'ads').ads.length === 0);
 e = ev(plane({ tach: 1060, last100: 1050, ads: [Object.assign({}, fspOil, { nonGrounding: undefined })] }));
 ok('oil change is non-grounding by default even without the flag', e.overall === 'due', e.reasons);
 e = ev(plane({ tach: 1060, last100: 1050, ads: [Object.assign({}, fspOil, { nonGrounding: false })] }));
@@ -52,7 +54,9 @@ ok('overdue AD grounds', e.overall === 'grounded');
 e = ev(plane({ ads: [Object.assign({}, ad, { ignored: true })] }));
 ok('ignored AD does not ground, listed as ignored', e.overall === 'ok' && item(e, 'ads').ignoredAds.length === 1, e.reasons);
 e = ev(plane({ ads: [Object.assign({}, fspOil, { ignored: true })], tach: 1060, last100: 1050 }));
-ok('ignored oil change -> no virtual oil re-added', item(e, 'ads').ads.length === 0 && e.overall === 'ok', item(e, 'ads'));
+ok('ignored oil change -> 50 shows N/A, no virtual re-added', item(e, 'oil50').state === 'na' && item(e, 'oil50').ads.length === 0 && e.overall === 'ok', item(e, 'oil50'));
+e = ev(plane({ na: { oil50: true }, tach: 1030 }));
+ok('N/A box on 50 hides the oil change', item(e, 'oil50').state === 'na' && e.overall === 'ok', e.reasons);
 
 // existing non-grounding behaviour still works
 e = ev(plane({ ads: [{ id: 'n1', desc: 'Something (Non-Grounding)', nextDueDate: ago(2) }] }));

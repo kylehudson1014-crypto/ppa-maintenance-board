@@ -8,7 +8,8 @@ var PPAStatus = (function () {
     { key: 'pitot',   letter: 'A', label: 'Altimeter / pitot-static (IFR)', short: 'Alt/Pitot' },
     { key: 'xpdr',    letter: 'T', label: 'Transponder',              short: 'Xpdr' },
     { key: 'elt',     letter: 'E', label: 'ELT inspection + battery', short: 'ELT' },
-    { key: 'ads',     letter: 'D', label: 'Airworthiness Directives', short: 'ADs' }
+    { key: 'ads',     letter: 'D', label: 'Airworthiness Directives & tracked reminders', short: 'ADs' },
+    { key: 'oil50',   letter: '50', label: '50-hr oil change', short: '50-hr oil' }
   ];
 
   var DEFAULT_RULES = {
@@ -174,14 +175,22 @@ var PPAStatus = (function () {
           detail: 'Inspection: ' + (insp.dueDate ? niceDate(insp.dueDate) : 'no date') + ' · Battery exp: ' + (d.eltBattery ? niceDate(d.eltBattery) : 'no date'),
           sub: [{ k: 'Inspection', s: insp.state, v: insp.value }, { k: 'Battery', s: bat.state, v: bat.value }] }));
       }
+      else if (it.key === 'oil50') {
+        var oils = trackedADs(a, R).filter(function (x) { return !x.inactive && isOilChange(x); });
+        var liveOils = oils.filter(function (x) { return !isIgnoredAD(x); });
+        if (!liveOils.length) { out.push(Object.assign(base, { state: 'na', value: 'N/A', detail: oils.length ? '50-hr oil change ignored' : 'Not tracked', ads: [], ignoredAds: oils })); return; }
+        var oe = liveOils.map(function (ad) { var e = evalAD(ad, a, R, today); e.ad = ad; return e; });
+        var wo = oe.reduce(function (p, c) { return RANK[c.state] > RANK[p.state] ? c : p; });
+        out.push(Object.assign(base, { state: wo.state, value: wo.value, overText: wo.overText, nonGroundingOverdue: !!wo.nonGroundingOverdue, detail: wo.detail, ads: oe, ignoredAds: oils.filter(isIgnoredAD) }));
+      }
       else if (it.key === 'ads') {
-        var all = trackedADs(a, R).filter(function (x) { return !x.inactive; });
+        var all = trackedADs(a, R).filter(function (x) { return !x.inactive && !isOilChange(x); }); // oil change has its own "50" letter
         var ignoredAds = all.filter(isIgnoredAD);
         var ads = all.filter(function (x) { return !isIgnoredAD(x); });
         if (!ads.length) { out.push(Object.assign(base, { state: 'none', value: '—', detail: 'No recurring ADs listed' + (ignoredAds.length ? ' · ' + ignoredAds.length + ' ignored' : ''), ads: [], ignoredAds: ignoredAds })); return; }
         var evals = ads.map(function (ad) { var e = evalAD(ad, a, R, today); e.ad = ad; return e; });
         var w2 = evals.reduce(function (p, c) { return RANK[c.state] > RANK[p.state] ? c : (RANK[c.state] === RANK[p.state] && (c.dLeft != null && p.dLeft != null && c.dLeft < p.dLeft) ? c : p); });
-        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, nonGroundingOverdue: !!w2.nonGroundingOverdue, reasonShort: isOilChange(w2.ad) ? '50-hr oil' : '', detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' items tracked' : '') + (ignoredAds.length ? ' · ' + ignoredAds.length + ' ignored' : ''), ads: evals, ignoredAds: ignoredAds }));
+        out.push(Object.assign(base, { state: w2.state, value: w2.value, overText: w2.overText, nonGroundingOverdue: !!w2.nonGroundingOverdue, detail: w2.detail + (ads.length > 1 ? ' · ' + ads.length + ' items tracked' : '') + (ignoredAds.length ? ' · ' + ignoredAds.length + ' ignored' : ''), ads: evals, ignoredAds: ignoredAds }));
       }
     });
 
