@@ -172,11 +172,11 @@ var PPAViews = (function () {
       '<div class="meters">' +
       '<div id="tachwrap" class="' + (showTach ? '' : 'hide') + '"><div class="row"><label class="f">Start Tach<input type="number" step="0.1" inputmode="decimal" id="ts" value="' + esc(d.tachStart) + '"></label>' +
       '<label class="f">End Tach<input type="number" step="0.1" inputmode="decimal" id="te" class="' + tSnap.cls.trim() + '" value="' + esc(d.tachEnd) + '"></label></div>' +
-      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaptach">📷 Snap meter</button><input type="file" id="snaptachfile" accept="image/*" capture="environment" class="hide"></div>' +
+      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaptach">📷 Snap meter</button><input type="file" id="snaptachfile" accept="image/*" class="hide"></div>' +
       '<div class="ftime" id="tflight"></div>' + tSnap.warn + tSnap.conf + '</div>' +
       '<div><div class="row"><label class="f">Start Hobbs<input type="number" step="0.1" inputmode="decimal" id="hs" value="' + esc(d.hobbsStart) + '"></label>' +
       '<label class="f">End Hobbs<input type="number" step="0.1" inputmode="decimal" id="he" class="' + hSnap.cls.trim() + '" value="' + esc(d.hobbsEnd) + '"></label></div>' +
-      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaphobbs">📷 Snap meter</button><input type="file" id="snaphobbsfile" accept="image/*" capture="environment" class="hide"></div>' +
+      '<div class="row" style="margin-top:6px"><button type="button" class="btn sm" id="snaphobbs">📷 Snap meter</button><input type="file" id="snaphobbsfile" accept="image/*" class="hide"></div>' +
       '<div class="ftime" id="hflight"></div>' + hSnap.warn + hSnap.conf + '</div>' +
       '</div></div>' +
 
