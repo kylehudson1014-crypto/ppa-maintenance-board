@@ -358,6 +358,40 @@ var PPAStatus = (function () {
     };
   }
 
+  // ---- squawk de-duplication ----
+  // Same squawk = same plane + same text ignoring case, spacing, curly quotes and trailing punctuation.
+  function normSquawkText(t) {
+    return String(t || '').toLowerCase().replace(/[\u2018\u2019\u201b`´]/g, "'").replace(/[\u201c\u201d]/g, '"')
+      .replace(/\s+/g, ' ').replace(/[\s.!?,;:]+$/g, '').trim();
+  }
+  function squawkKey(s) { return String((s && (s.aircraftId || String(s.tail || '').toUpperCase().replace(/[\s-]/g, ''))) || '') + '|' + normSquawkText(s && s.text); }
+  // Collapse exact duplicates for display: keep the oldest, remember the hidden ids in _dupIds
+  // so clearing / editing the kept one also clears the copies.
+  function collapseSquawks(list) {
+    var seen = {}, out = [];
+    (list || []).slice().sort(function (a, b) { return String(a.createdAt || '').localeCompare(String(b.createdAt || '')); }).forEach(function (s) {
+      var k = squawkKey(s), keep = seen[k];
+      if (!keep) { keep = seen[k] = Object.assign({}, s, { _dupIds: (s._dupIds || []).slice() }); out.push(keep); return; }
+      if (keep.id !== s.id && keep._dupIds.indexOf(s.id) < 0) keep._dupIds.push(s.id);
+      (s._dupIds || []).forEach(function (d) { if (keep._dupIds.indexOf(d) < 0) keep._dupIds.push(d); });
+    });
+    var order = (list || []).map(function (s) { return s.id; });
+    return out.sort(function (a, b) { return order.indexOf(a.id) - order.indexOf(b.id); });
+  }
+  // Import check: is this FSP squawk already on the board? FSP id when known; otherwise same text and
+  // (still open on the board, or the same FSP report date).
+  function isDuplicateSquawk(sq, list) {
+    var k = squawkKey(sq);
+    return (list || []).some(function (s) {
+      if (sq.fspId && s.fspId) return String(sq.fspId) === String(s.fspId);
+      if (squawkKey(s) !== k) return false;
+      if (s.status === 'open') return true;
+      if (!sq.date) return true;
+      if (s.fspDate) return String(s.fspDate).slice(0, 10) === sq.date;
+      return String(s.createdAt || '').slice(0, 10) === sq.date;
+    });
+  }
+
   function meterDeltaHours(start, end) {
     if (start == null || end == null || start === '' || end === '') return null;
     var a = Number(start), b = Number(end);
@@ -386,6 +420,7 @@ var PPAStatus = (function () {
     hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters,
     hasTach: hasTach, oilAddedLast30Days: oilAddedLast30Days, oilAddedSince: oilAddedSince, lastFspImportAt: lastFspImportAt,
     hoursFlownInRange: hoursFlownInRange, oilRatePer10Hours: oilRatePer10Hours, oilSummary: oilSummary, reportsFor: reportsFor,
+    normSquawkText: normSquawkText, collapseSquawks: collapseSquawks, isDuplicateSquawk: isDuplicateSquawk,
     flightLogSheetPayload: flightLogSheetPayload, meterDeltaHours: meterDeltaHours, meterPlausibility: meterPlausibility };
 })();
 if (typeof module !== 'undefined') module.exports = PPAStatus;

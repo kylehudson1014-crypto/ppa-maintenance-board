@@ -42,7 +42,7 @@ var Store = (function () {
     });
   }
   function testNote(msg) { setTimeout(function () { if (window.PPAUI && PPAUI.toast) PPAUI.toast(msg || '🧪 Test only — not saved to the live board', false); }, 900); }
-  function emit() { if (PREVIEW) applyOverlay(); st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
+  function emit() { if (PREVIEW) applyOverlay(); if (window.PPAStatus && PPAStatus.collapseSquawks) st.squawks = PPAStatus.collapseSquawks(st.squawks); st.lastSync = new Date(); listeners.forEach(function (f) { try { f(st); } catch (e) { console.error(e); } }); }
   function now() { return new Date().toISOString(); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function normEmail(e) { return String(e || '').trim().toLowerCase(); }
@@ -250,6 +250,8 @@ var Store = (function () {
     addSquawk: function (s) {
       var doc = { aircraftId: s.aircraftId, tail: s.tail, text: String(s.text).slice(0, 500), severity: s.severity, grounding: s.severity === 'grounding',
         status: 'open', reportedBy: String(s.reportedBy || '').slice(0, 80), createdAt: now() };
+      if (s.fspDate) doc.fspDate = String(s.fspDate).slice(0, 10); // FSP report date: lets re-imports recognise this squawk
+      if (s.fspId) doc.fspId = String(s.fspId);
       if (st.mode === 'demo') { doc.id = PPASample.uid(); st.squawks.push(doc); demoSave(); return Promise.resolve(doc); }
       return db.collection('squawks').add(doc);
     },
@@ -353,6 +355,8 @@ var Store = (function () {
     api.addSquawk = function (s) {
       var doc = { id: 'test-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), aircraftId: s.aircraftId, tail: s.tail, text: String(s.text).slice(0, 500), severity: s.severity, grounding: s.severity === 'grounding',
         status: 'open', reportedBy: String(s.reportedBy || '').slice(0, 80), createdAt: now(), test: true };
+      if (s.fspDate) doc.fspDate = String(s.fspDate).slice(0, 10);
+      if (s.fspId) doc.fspId = String(s.fspId);
       ov.squawks[doc.id] = doc; ovSave(); emit(); testNote(); return Promise.resolve(clone(doc));
     };
     api.updateSquawk = function (s) { s = clone(s); s.grounding = s.severity === 'grounding'; ov.squawks[s.id] = s; ovSave(); emit(); testNote(); return Promise.resolve(); };
@@ -374,5 +378,11 @@ var Store = (function () {
     api.resetPreview = function () { try { localStorage.removeItem(OKEY); } catch (e) {} location.reload(); };
     api.previewChanges = function () { return Object.keys(ov.aircraft).length + Object.keys(ov.squawks).length + Object.keys(ov.priv).length + ov.reports.length + (ov.settings ? 1 : 0) + (ov.alerts ? 1 : 0); };
   }
+  // A squawk shown once may stand for several identical copies (_dupIds): apply the same change to all of them.
+  var baseUpdateSquawk = api.updateSquawk;
+  api.updateSquawk = function (s) {
+    var dups = (s && s._dupIds) || []; s = clone(s); delete s._dupIds;
+    return baseUpdateSquawk(s).then(function () { return Promise.all(dups.map(function (id) { var d = clone(s); d.id = id; return baseUpdateSquawk(d); })); });
+  };
   return api;
 })();
