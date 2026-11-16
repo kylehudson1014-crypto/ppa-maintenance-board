@@ -162,6 +162,7 @@
   }
   function needRole(what, route) {
     if (Store.can(what)) return false;
+    if (st.mode === 'live' && st.user && st.role === 'checking') { app.innerHTML = topbar('Signing in') + '<div class="wrap"><div class="card"><h2>Checking your access…</h2></div></div>'; return true; }
     if (st.mode === 'demo') {
       app.innerHTML = topbar('Demo') + '<div class="wrap">' + demoBanner() + '<div class="card"><h2>You are viewing the demo as: ' + esc(st.role.toUpperCase()) + '</h2><p>CFIs can only report squawks. Switch the demo role to try other screens.</p><button class="btn pri" id="be">Demo as Owner / Mechanic</button></div></div>';
       $('#be').onclick = function () { Store.setDemoRole('editor'); }; return true;

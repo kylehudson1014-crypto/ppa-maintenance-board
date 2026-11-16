@@ -45,9 +45,12 @@ var Store = (function () {
         unsubs.push(db.collection('squawks').where('status', '==', 'open').onSnapshot(function (q) { st.squawks = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); emit(); }, err));
         auth.onAuthStateChanged(function (u) {
           privUnsubs.forEach(function (f) { f(); }); privUnsubs = [];
-          st.user = u ? { email: normEmail(u.email), uid: u.uid } : null; st.role = 'public'; st.name = '';
+          st.user = u ? { email: normEmail(u.email), uid: u.uid } : null; st.role = u ? 'checking' : 'public'; st.name = '';
           if (!u) { emit(); return; }
-          db.doc('roles/' + normEmail(u.email)).get().then(function (r) {
+          emit();
+          var roleRef = db.doc('roles/' + normEmail(u.email));
+          var getRole = function (tries) { return roleRef.get({ source: 'server' }).catch(function (e) { if (tries > 0) return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return getRole(tries - 1); }); return roleRef.get(); }); };
+          getRole(3).then(function (r) {
             st.role = r.exists ? (r.data().role || 'public') : 'none'; st.name = r.exists ? (r.data().name || '') : '';
             if (st.role === 'editor') {
               // first editor sign-in on a new project: save default lists/locations so every screen shares them
