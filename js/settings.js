@@ -80,6 +80,7 @@ var PPASettings = (function () {
       // data
       '<div class="card" id="s-data"><h2>CSV import / export & backup</h2><div class="row">' +
       '<label class="btn pri">⬆ Import FSP Maintenance Status Report<input type="file" id="fspin" accept=".pdf,application/pdf,.csv,text/csv" class="hide"></label>' +
+      '<div class="row" style="margin-top:8px;gap:8px;align-items:center"><label class="sub" for="igt">Skip on FSP import (tails, comma-separated):</label><input id="igt" style="flex:1;min-width:160px" value="' + esc(ignored().join(', ')) + '"><button class="btn" id="igts">Save</button></div>' +
       '<button class="btn" id="csvout">⬇ Export fleet CSV</button><a class="btn" href="template.csv" download>⬇ Blank CSV template</a>' +
       '<label class="btn">⬆ Import CSV<input type="file" id="csvin" accept=".csv,text/csv" class="hide"></label>' +
       '<button class="btn" id="jsonout">⬇ Full backup (JSON)</button>' + (st.mode === 'demo' ? '<label class="btn">⬆ Restore backup<input type="file" id="jsonin" accept=".json" class="hide"></label><button class="btn" id="reset">Reload SAMPLE data</button><button class="btn bad" id="clear">Start empty (remove samples)</button>' : '') + '</div>' +
@@ -236,6 +237,7 @@ var PPASettings = (function () {
   }
   function squashSq(t) { return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
 
+  function ignored() { var l = st.settings.ignoreTails; if (!Array.isArray(l)) l = ['NB58RB']; return l.map(function (t) { return String(t).toUpperCase().replace(/[\s-]/g, ''); }).filter(Boolean); }
   function buildFspImport(parsed) {
     if (!parsed || !parsed.aircraft || !parsed.aircraft.length) return { error: 'No aircraft found in that report. Use Flight Schedule Pro’s Maintenance Status Report PDF.' };
     var Imp = window.PPAFspImport;
@@ -245,6 +247,7 @@ var PPASettings = (function () {
       var f = Imp.toBoardFields(raw);
       (f.doubts || []).forEach(function (d) { warn.push(d); });
       var tail = (f.tail || '').toUpperCase().replace(/\s/g, '');
+      if (ignored().indexOf(tail.replace(/-/g, '')) >= 0) { warn.push(tail + ' skipped (on the ignore list in Settings).'); return; }
       var ex = st.aircraft.filter(function (a) { return tail && a.tail.toUpperCase().replace(/-/g, '') === tail.replace(/-/g, ''); })[0];
       var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, hoursUpdated: '', tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '', ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
       var ch = [];
@@ -355,6 +358,7 @@ var PPASettings = (function () {
     // data
     $('#csvout').onclick = exportCSV;
     $('#csvin').onchange = function () { var f = this.files[0]; if (!f) return; f.text().then(function (t) { pendingImport = buildImport(t); U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }); };
+    if ($('#igts')) $('#igts').onclick = function () { var l = $('#igt').value.split(/[,\s]+/).map(function (t) { return t.trim().toUpperCase(); }).filter(Boolean); saveS(function (s) { s.ignoreTails = l; }, 'Ignore list saved'); };
     if ($('#fspin')) $('#fspin').onchange = function () {
       var f = this.files[0], inp = this; if (!f) return;
       ingestFspFile(f).then(function () { U.render(true); setTimeout(function () { var el = $('#imp'); if (el) el.scrollIntoView(); }, 50); }).catch(function (e) { toast((e && e.message) || String(e), true); }).then(function () { inp.value = ''; });
