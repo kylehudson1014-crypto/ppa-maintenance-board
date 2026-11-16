@@ -479,7 +479,7 @@ var PPAViews = (function () {
       return '<div class="itemrow s-' + i.state + '"><div class="lab"><b>' + i.letter + '</b>' + esc(i.short) + '</div><div>' + inner + '</div><div>' + doneBtn + '</div><div>' + chkNA(key) + '</div>' +
         '<div class="res"><span class="chip s-' + i.state + '">' + esc(i.state === 'na' ? 'N/A' : i.value) + '</span> ' + esc(i.detail) + '</div></div>';
     }
-    function chkNA(key) { return '<label class="chk" title="Not applicable to this aircraft"><input type="checkbox" data-f="na.' + key + '"' + ((a.na || {})[key] ? ' checked' : '') + '> N/A</label>'; }
+    function chkNA(key) { if (key === 'oil50') return '<span class="sub" style="color:var(--mute);font-size:12px">always tracked</span>'; return '<label class="chk" title="Not applicable to this aircraft"><input type="checkbox" data-f="na.' + key + '"' + ((a.na || {})[key] ? ' checked' : '') + '> N/A</label>'; }
     function dateItem(key, label) { return itemRow(key, '<label class="f">' + label + fld('dates.' + key, 'date') + '</label>', '<button class="btn ok" data-done="' + key + '">✓ Done today</button>'); }
     var sqs = st.squawks.filter(function (s) { return s.aircraftId === id; });
     var closed = (st.closedSquawks || []).filter(function (s) { return s.aircraftId === id; }).slice(0, 15);
@@ -515,10 +515,10 @@ var PPAViews = (function () {
       dateItem('xpdr', 'Transponder (91.413) — last done') +
       itemRow('elt', '<div class="row"><label class="f">ELT inspection — last done' + fld('dates.elt', 'date') + '</label><label class="f">ELT battery expires' + fld('dates.eltBattery', 'date') + '</label></div>', '<button class="btn ok" data-done="elt">✓ Inspected today</button>') +
       itemRow('ads', '<span class="sub" style="color:var(--mute)">' + adList.length + ' item(s) below' + (ignoredN ? ' (' + ignoredN + ' ignored)' : '') + '. The worst tracked one sets this color.</span>', '') +
-      itemRow('oil50', '<span class="sub" style="color:var(--mute)">50-hr oil change (non-grounding by default). Edit it, mark it complied, or ignore it in the ADs &amp; tracked reminders card below.</span>', '') +
+      itemRow('oil50', '<span class="sub" style="color:var(--mute)">50-hr oil change (non-grounding by default). Always tracked on every plane (it cannot be ignored). Edit it or mark it complied in the ADs &amp; tracked reminders card below.</span>', '') +
       '<p class="sub" style="color:var(--mute);font-size:12px">Calendar-month items are due through the last day of the month (e.g. annual done Mar 10 → due Mar 31 next year). Yellow thresholds are in Settings. 100-hr: the 10-hour overfly allowance (91.409(b)) is info only and never extends the due on this board.</p></div>' +
 
-      '<div class="card"><h2>D · ADs &amp; tracked reminders (+ 50 · oil change)</h2><p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">The 50-hr oil change is edited here but shows as its own <b>50</b> letter (non-grounding unless you uncheck the box). Tap <b>Ignore</b> to stop tracking an item without deleting it; FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.map(function (k) {
+      '<div class="card"><h2>D · ADs &amp; tracked reminders (+ 50 · oil change)</h2><p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">The 50-hr oil change is edited here but shows as its own <b>50</b> letter (non-grounding unless you uncheck the box). Tap <b>Ignore</b> to stop tracking an item without deleting it (the oil change can't be ignored); FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.map(function (k) {
         var ad = adList[k], ign = S.isIgnoredAD(ad), ng = ad.nonGrounding || (S.isOilChange(ad) && ad.nonGrounding !== false);
         var ae = ign ? null : (it.ads.ads || []).filter(function (x) { return x.ad.id === ad.id; })[0];
         var unit = ad.intervalMonths ? 'months' : ad.intervalDays ? 'days' : '';
@@ -533,7 +533,7 @@ var PPAViews = (function () {
           '<label class="f">One-time: next due date<input type="date" data-ad="' + k + '.nextDueDate" value="' + esc(ad.nextDueDate || '') + '"></label>' +
           '<label class="f">One-time: next due hours<input type="number" step="0.1" data-ad="' + k + '.nextDueHours" value="' + esc(ad.nextDueHours == null ? '' : ad.nextDueHours) + '"></label>' +
           '<label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-adng="' + k + '"' + (ng ? ' checked' : '') + '> Non-grounding (overdue shows amber, plane stays available)</label>' +
-          (ign ? '' : '<button class="btn ok" data-addone="' + k + '">✓ Complied today</button>') + '<button class="btn sm" data-adign="' + k + '">' + (ign ? '↩ Restore' : '🚫 Ignore') + '</button>' + (ad.virtual ? '' : '<button class="iconbtn" data-adrm="' + k + '" title="Remove">✕</button>') + '</div>' + (ign ? '<div class="sub" style="color:var(--mute);font-size:13px">Ignored — not counted in status or shown on the fleet view' + (S.isGpsUpdate(ad) && ad.ignored !== true ? ' (GPS / nav database update)' : '') + '.</div>' : ae ? '<div class="sub" style="color:#cfdcf0;font-size:13px">' + esc(ae.detail) + '</div>' : '') + '</div>';
+          (ign ? '' : '<button class="btn ok" data-addone="' + k + '">✓ Complied today</button>') + (S.isOilChange(ad) ? '' : '<button class="btn sm" data-adign="' + k + '">' + (ign ? '↩ Restore' : '🚫 Ignore') + '</button>') + (ad.virtual ? '' : '<button class="iconbtn" data-adrm="' + k + '" title="Remove">✕</button>') + '</div>' + (ign ? '<div class="sub" style="color:var(--mute);font-size:13px">Ignored — not counted in status or shown on the fleet view' + (S.isGpsUpdate(ad) && ad.ignored !== true ? ' (GPS / nav database update)' : '') + '.</div>' : ae ? '<div class="sub" style="color:#cfdcf0;font-size:13px">' + esc(ae.detail) + '</div>' : '') + '</div>';
       }).join('') + '</div><br><button class="btn" id="addad">+ Add AD</button></div>' +
 
       '<div class="card"><h2>Squawks (' + sqs.length + ' open)</h2><div class="listed">' + sqs.map(function (s) {
