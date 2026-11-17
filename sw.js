@@ -3,8 +3,8 @@
 // each copy only ever deletes its own old caches.
 var PREVIEW = /preview/i.test(self.registration ? self.registration.scope : self.location.href);
 var PREFIX = PREVIEW ? 'ppa-mb-preview-' : 'ppa-mb-';
-var CACHE = PREFIX + 'v19';
-var SHELL = ['./', 'index.html', 'css/app.css?v=19', 'js/config.js?v=19', 'js/status.js?v=19', 'js/meter-ocr.js?v=19', 'js/sample.js?v=19', 'js/store.js?v=19', 'js/app.js?v=19', 'js/views.js?v=19', 'js/fsp-import.js?v=19', 'js/settings.js?v=19', 'img/ppa-logo.png', 'img/icon-192.png', 'img/icon-512.png', 'manifest.webmanifest', 'template.csv'];
+var CACHE = PREFIX + 'v21';
+var SHELL = ['./', 'index.html', 'css/app.css?v=21', 'js/config.js?v=21', 'js/status.js?v=21', 'js/meter-ocr.js?v=21', 'js/sample.js?v=21', 'js/store.js?v=21', 'js/app.js?v=21', 'js/views.js?v=21', 'js/fsp-import.js?v=21', 'js/settings.js?v=21', 'img/ppa-logo.png', 'img/icon-192.png', 'img/icon-512.png', 'manifest.webmanifest', 'template.csv'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== CACHE && k.indexOf(PREFIX) === 0 && (PREVIEW || k.indexOf('ppa-mb-preview-') !== 0); }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); })); });
 self.addEventListener('fetch', function (e) {

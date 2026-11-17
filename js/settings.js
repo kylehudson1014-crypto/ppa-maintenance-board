@@ -29,9 +29,9 @@ var PPASettings = (function () {
 
       // locations
       '<div class="card" id="s-loc"><h2>Locations (schools / airports)</h2><div class="listed">' + (s.locations || []).map(function (l, i) {
-        return '<div class="li"><input type="text" data-loc="' + i + '.code" value="' + esc(l.code) + '" style="max-width:110px;flex:0 0 110px" placeholder="KECP"><input type="text" data-loc="' + i + '.name" value="' + esc(l.name) + '" placeholder="Name"><span class="sub" style="color:var(--mute)">' + (used[l.id] || 0) + ' aircraft</span><button class="iconbtn" data-locu="' + i + '">↑</button><button class="iconbtn" data-locd="' + i + '">↓</button><button class="iconbtn" data-locx="' + i + '">✕</button></div>';
+        return '<div class="li"><input type="text" data-loc="' + i + '.code" value="' + esc(l.code) + '" style="max-width:110px;flex:0 0 110px" placeholder="KECP"><input type="text" data-loc="' + i + '.name" value="' + esc(l.name) + '" placeholder="Name"><label class="sub" title="Tag color on every card" style="display:flex;align-items:center;gap:4px;color:var(--mute)">Color<input type="color" data-loccol="' + i + '" value="' + esc(S.locColor(s, l.id)) + '" style="width:44px;height:32px;padding:0"></label>' + U.locTag(l.id, 'loc inl') + '<span class="sub" style="color:var(--mute)">' + (used[l.id] || 0) + ' aircraft</span><button class="iconbtn" data-locu="' + i + '">↑</button><button class="iconbtn" data-locd="' + i + '">↓</button><button class="iconbtn" data-locx="' + i + '">✕</button></div>';
       }).join('') + '</div><div class="row" style="margin-top:8px"><input type="text" id="nlc" placeholder="Code (e.g. KPFN)" style="max-width:160px"><input type="text" id="nln" placeholder="Name" style="flex:1"><button class="btn" id="addloc">Add location</button></div>' +
-      '<p class="sub" style="color:var(--mute);font-size:12px">Renaming keeps every aircraft linked. A location with aircraft can\'t be removed until they\'re moved.</p></div>' +
+      '<p class="sub" style="color:var(--mute);font-size:12px">Every screen is sorted in this order (↑ ↓), and each location\'s color tags its planes. Renaming keeps every aircraft linked. A location with aircraft can\'t be removed until they\'re moved.</p></div>' +
 
       '<div id="s-lists">' + strList('types', 'Aircraft types (dropdown)') + strList('notePresets', 'Status note choices', 'Quick picks for the note shown on the TV and customer view.') +
       strList('groundPresets', 'Manual grounding reasons') + strList('squawkPresets', 'Common squawks (one-tap buttons on the CFI form)') + '</div>' +
@@ -39,10 +39,11 @@ var PPASettings = (function () {
       // rules
       '<div class="card" id="s-rules"><h2>Due rules & yellow thresholds</h2><table class="prev"><tr><th>Item</th><th>Interval</th><th>Turn yellow when</th></tr>' +
       rrow('annual', 'A · Annual', 'months', 'calendar months', 'warnDays', 'days left') +
-      rrow('hundred', '1 · 100-hour', 'hours', 'hours', 'warnHours', 'hours left') + rrow('pitot', 'A · Alt / pitot-static', 'months', 'calendar months', 'warnDays', 'days left') +
+      rrow('vor', 'V · VOR check (IFR, non-grounding)', 'days', 'days', 'warnDays', 'days left') +
+      rrow('hundred', '1 / 100 HR · 100-hour (0 left = grounded)', 'hours', 'hours', 'warnPct', '% of interval left or less (10% = 10 h)') + rrow('pitot', 'A · Alt / pitot-static', 'months', 'calendar months', 'warnDays', 'days left') +
       rrow('xpdr', 'T · Transponder', 'months', 'calendar months', 'warnDays', 'days left') + rrow('elt', 'E · ELT inspection', 'months', 'calendar months', 'warnDays', 'days left (also battery)') +
-      rrow('oil50', '50 · 50-hr oil change (non-grounding)', 'hours', 'hours', 'warnHours', 'hours left') +
-      '<tr><td>D · ADs</td><td>per AD</td><td><input type="number" data-rule="ads.warnDays" value="' + R.ads.warnDays + '" style="width:90px"> days or <input type="number" data-rule="ads.warnHours" value="' + R.ads.warnHours + '" style="width:90px"> hours left</td></tr>' +
+      rrow('oil50', '50 HR · 50-hr oil change (non-grounding)', 'hours', 'hours', 'warnPct', '% of interval left or less (10% = 5 h)') +
+      '<tr><td>ADs &amp; reminders</td><td>per AD</td><td><input type="number" data-rule="ads.warnDays" value="' + R.ads.warnDays + '" style="width:90px"> days or <input type="number" data-rule="ads.warnHours" value="' + R.ads.warnHours + '" style="width:90px"> hours left</td></tr>' +
       '<tr><td>Hours freshness</td><td colspan="2">Flag "hours old" when tach/Hobbs not updated in <input type="number" data-rule="staleHoursDays" value="' + R.staleHoursDays + '" style="width:90px"> days</td></tr></table>' +
       '<p class="sub" style="color:var(--mute);font-size:12px">Defaults follow 14 CFR 91.409 (annual, 100-hr), 91.411 (pitot-static, 24 cal. months), 91.413 (transponder, 24 cal. months), 91.207 (ELT, 12 cal. months). Overdue = red = GROUNDED, except non-grounding items like the 50-hr oil change, which stay amber. GPS / nav database updates are ignored. Missing dates show as "needs data" (yellow).</p>' +
       '<button class="btn sm" id="rdef">Reset to defaults</button></div>' +
@@ -241,7 +242,7 @@ var PPASettings = (function () {
       S.syncMeters(a);
       if (o.last_100hr_at) { var lv = Number(o.last_100hr_at.replace(/,/g, '')); if (!isNaN(lv)) setv('last100', lv, 'last 100-hr'); }
       [['ifr', 'ifr'], ['for_hire', 'forHire']].forEach(function (p) { if (o[p[0]] !== undefined) { var y = yes(o[p[0]]); if (y !== null) setv(p[1], y, p[0]); } });
-      [['annual_done', 'annual'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (p) {
+      [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (p) {
         if (o[p[0]]) { var d = normDate(o[p[0]]); if (d === null) warn.push(tail + ': bad date "' + o[p[0]] + '" in ' + p[0]); else setv('dates.' + p[1], d, p[0]); }
       });
       if (o.status_note) setv('statusNote', o.status_note, 'note');
@@ -299,7 +300,7 @@ var PPASettings = (function () {
     if (!parsed || !parsed.aircraft || !parsed.aircraft.length) return { error: 'No aircraft found in that report. Use Flight Schedule Pro’s Maintenance Status Report PDF.' };
     var Imp = window.PPAFspImport;
     var ops = [], warn = (parsed.warnings || []).slice(), newLocs = [], newTypes = [], squawkOps = [];
-    var locs = clone(st.settings.locations || []), types = (st.settings.types || []).slice();
+    var locs = clone(st.settings.locations || []), types = (st.settings.types || []).slice(), seenTails = {};
     parsed.aircraft.forEach(function (raw, n) {
       var f = Imp.toBoardFields(raw);
       (f.doubts || []).forEach(function (d) { warn.push(d); });
@@ -308,6 +309,8 @@ var PPASettings = (function () {
       if (ignored().indexOf(tail.replace(/-/g, '')) >= 0) { warn.push(tail + ' skipped (on the ignore list in Settings).'); return; }
       if (/redbird|aatd|batd|\bsimulator\b|\bflight sim\b|\bftd\b|training device/i.test(String((f.type || '') + ' ' + (raw.model || raw.make || raw.description || '') + ' ' + tail))) { warn.push(tail + ' skipped (simulator, not an aircraft).'); return; }
       var ex = st.aircraft.filter(function (a) { return tail && a.tail.toUpperCase().replace(/-/g, '') === tail.replace(/-/g, ''); })[0];
+      seenTails[S.normTail(tail)] = true;
+      if (S.isAway({ tail: tail }, st.settings)) warn.push(tail + ' is marked AWAY: its data is updated but it stays hidden from the board until you tap Restore (Edit).');
       var a = ex ? clone(ex) : { id: PPASample.uid(), tail: tail, type: '', location: (locs[0] || {}).id || '', meter: 'tach', hours: null, last100: null, hoursUpdated: '', tach: null, hobbs: null, tachUpdated: '', hobbsUpdated: '', ifr: true, forHire: true, dates: {}, na: {}, ads: [], statusNote: '', expectedBack: '', grounded: false, groundedReason: '', fspAircraftId: '', order: st.aircraft.length + n, log: [] };
       var ch = [];
       function setv(k, v, label) { if (v === null || v === undefined || v === '') return; if (!eqv(getp(a, k), v)) { setp(a, k, v); ch.push(label); } }
@@ -325,7 +328,7 @@ var PPASettings = (function () {
       applyHours(f.current_hobbs, 'hobbs', f.hobbs_date, 'hobbs');
       S.syncMeters(a);
       if (f.last_100hr_at != null) setv('last100', f.last_100hr_at, 'last 100-hr');
-      [['annual_done', 'annual'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (pair) {
+      [['annual_done', 'annual'], ['vor_done', 'vor'], ['pitot_static_done', 'pitot'], ['transponder_done', 'xpdr'], ['elt_done', 'elt'], ['elt_battery_expires', 'eltBattery']].forEach(function (pair) {
         if (f[pair[0]]) setv('dates.' + pair[1], f[pair[0]], pair[0]);
       });
       if (f.status_note && !a.statusNote) setv('statusNote', f.status_note, 'note');
@@ -373,6 +376,9 @@ var PPASettings = (function () {
       });
       ops.push({ a: a, isNew: !ex, changes: ch, squawks: openSq });
     });
+    // Board planes the FSP report did not include (e.g. N429L on 11/15: the report had no Dothan planes at all).
+    var missing = st.aircraft.filter(function (a) { return !seenTails[S.normTail(a.tail)] && !S.isAway(a, st.settings) && ignored().indexOf(S.normTail(a.tail)) < 0; }).map(function (a) { var L = (st.settings.locations || []).filter(function (l) { return l.id === a.location; })[0]; return a.tail + ' (' + (L ? L.code : '?') + ')'; });
+    if (missing.length) warn.push('Not in this FSP report: ' + missing.join(', ') + '. Their board data was left as is. In FSP, check that the Maintenance Status Report includes every location (e.g. Dothan) and that these aircraft are active and listed under Maintenance.');
     return { source: 'fsp', ops: ops, warn: warn, newLocs: newLocs, newTypes: newTypes, locs: locs, types: types, squawkOps: squawkOps, reportCreated: parsed.reportCreated || '' };
   }
 
@@ -398,6 +404,7 @@ var PPASettings = (function () {
     $$('[data-sladd]').forEach(function (i) { i.onkeydown = function (k) { if (k.key === 'Enter') $('[data-sladdb="' + i.dataset.sladd + '"]').click(); }; });
     // locations
     $$('[data-loc]').forEach(function (el) { el.onchange = function () { var p = el.dataset.loc.split('.'); var v = el.value.trim(); if (!v) { U.render(true); return; } saveS(function (s) { s.locations[+p[0]][p[1]] = p[1] === 'code' ? v.toUpperCase() : v; }, 'Location renamed'); }; });
+    $$('[data-loccol]').forEach(function (el) { el.onchange = function () { saveS(function (s) { s.locations[+el.dataset.loccol].color = el.value; }, 'Location color saved'); }; });
     $$('[data-locu],[data-locd]').forEach(function (b) { b.onclick = function () { saveS(function (s) { swap(s.locations, +(b.dataset.locu || b.dataset.locd), b.dataset.locu ? -1 : 1); }); }; });
     $$('[data-locx]').forEach(function (b) { b.onclick = function () { var l = st.settings.locations[+b.dataset.locx]; var n = st.aircraft.filter(function (a) { return a.location === l.id; }).length; if (n) return toast(n + ' aircraft are at ' + l.code + '. Move them first.', true); if (confirm('Remove ' + l.code + '?')) saveS(function (s) { s.locations.splice(+b.dataset.locx, 1); }, 'Removed'); }; });
     $('#addloc').onclick = function () { var c = $('#nlc').value.trim().toUpperCase(), n = $('#nln').value.trim(); if (!c) return toast('Code required', true); if ((st.settings.locations || []).some(function (l) { return l.code === c; })) return toast(c + ' already exists', true); saveS(function (s) { s.locations = (s.locations || []).concat([{ id: c.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + PPASample.uid().slice(0, 4), code: c, name: n || c }]); }, 'Location added'); };

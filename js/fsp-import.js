@@ -65,8 +65,16 @@ var PPAFspImport = (function () {
     if (/^Patriot Pilot Academy$/i.test(text)) return true;
     return false;
   }
+  // An aircraft header is "N12345 <type> (<location> <operator>) - - - -". Older code only accepted ECP/CEW/DHN in the
+  // parentheses, so a plane at any other FSP location (or a location named differently) was silently folded into
+  // the plane above it. Now any parenthesized location works when the line looks like a header.
+  var KNOWN_LOC_RE = /\((KECP|KCEW|KDHN|ECP|CEW|DHN)\b/i;
   function isAircraftHeader(text) {
-    return /^N[A-Z0-9]{2,}\s+\S/.test(text) && /\((KECP|KCEW|KDHN|ECP|CEW|DHN)\b/i.test(text) && !/^for\s+/i.test(text);
+    if (!/^N[A-Z0-9]{2,}\s+\S/.test(text) || /^for\s+/i.test(text)) return false;
+    if (KNOWN_LOC_RE.test(text)) return true;
+    if (!/^N[0-9][A-Z0-9]{0,5}\s/.test(text)) return false;
+    // generic: ends with "(... )" optionally followed by the dash leader FSP prints after the header
+    return /\([^()]{2,}\)\s*(?:-\s*){2,}$/.test(text) || /\([^()]*(Academy|Aviation|Flight|School|Airport|Regional|Field)[^()]*\)\s*$/i.test(text);
   }
   function parseHeader(text) {
     var m = text.match(/^(N[A-Z0-9]+)\s+(.+)$/);
@@ -74,8 +82,17 @@ var PPAFspImport = (function () {
     var tail = m[1], rest = m[2].replace(/(?:\s+-)+$/g, '').trim();
     var inactive = /\(inactive\)/i.test(rest);
     rest = rest.replace(/\s*\(inactive\)/ig, '').trim();
-    var locM = rest.match(/\s*\((KECP|KCEW|KDHN|ECP|CEW|DHN)\b[^)]*\)\s*$/i);
-    var loc = locM ? locCode(locM[1]) : '';
+    var locM = rest.match(/\s*\((KECP|KCEW|KDHN|ECP|CEW|DHN)\b[^)]*\)\s*$/i), loc = '';
+    if (locM) loc = locCode(locM[1]);
+    else {
+      // any other location: "(DTS Patriot Pilot Academy)", "(Dothan)", "(Crestview - PPA)"
+      locM = rest.match(/\s*\(([^()]+)\)\s*$/);
+      if (locM) {
+        var inner = locM[1].trim(), byName = /dothan/i.test(inner) ? 'KDHN' : /crestview|bob sikes/i.test(inner) ? 'KCEW' : /panama city|beaches/i.test(inner) ? 'KECP' : '';
+        var code = inner.match(/^(K?[A-Z0-9]{3,4})\b/);
+        loc = byName || (code ? locCode(code[1]) : inner.replace(/\s*Patriot Pilot Academy\s*/i, '').trim() || inner);
+      }
+    }
     var type = locM ? rest.slice(0, locM.index).trim() : rest;
     return { tail: tail, type: type, locationCode: loc, inactive: inactive };
   }
@@ -441,6 +458,7 @@ var PPAFspImport = (function () {
       var kind = classifyReminder(r.name);
       if (kind === 'hundred') { last100 = r.lastTime; if (r.expired) overdue.push(r.name); return; }
       if (kind === 'annual' && r.lastDate) dates.annual = r.lastDate;
+      else if (kind === 'vor' && r.lastDate) dates.vor = r.lastDate; // VOR is back on the card (Kyle, 11/16/2026)
       else if (kind === 'vor' || kind === 'gps') { skipped.push(r.name); return; }
       else if (kind === 'pitot' && r.lastDate) dates.pitot = r.lastDate;
       else if (kind === 'xpdr' && r.lastDate) dates.xpdr = r.lastDate;
@@ -486,6 +504,7 @@ var PPAFspImport = (function () {
       ifr: '',
       for_hire: '',
       annual_done: dates.annual || '',
+      vor_done: dates.vor || '',
       pitot_static_done: dates.pitot || '',
       transponder_done: dates.xpdr || '',
       elt_done: dates.elt || '',

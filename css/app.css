@@ -39,11 +39,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid #3f82ea;border-color:#
 .tile .hd{display:flex;align-items:center;gap:8px}
 .tile .tail{font-size:26px;font-weight:900;letter-spacing:.5px}
 .tile .type{color:var(--mute);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tile .loc{margin-left:auto;background:#1d2f4f;border:1px solid #2e4a7a;border-radius:8px;padding:2px 8px;font-weight:800;font-size:13px}
+.loc{--lc:#5b6b85;background:color-mix(in srgb,var(--lc) 38%,#0a1426);border:2px solid var(--lc);color:#fff;border-radius:8px;padding:2px 8px;font-weight:900;font-size:13px;letter-spacing:.5px;white-space:nowrap}
+.tile .loc{margin-left:auto}
+.loc.inl{display:inline-block;font-size:11px;padding:0 6px;border-width:1px;vertical-align:1px}
+.chips button.locchip{border:2px solid var(--lc)}.chips button.locchip.on{background:color-mix(in srgb,var(--lc) 55%,#0a1426);border-color:var(--lc)}
 .tile .why{font-size:13px;color:#ffd0d6;line-height:1.3}
 .tile.s-due .why{color:#ffe7a6}
 .samp{position:absolute;right:8px;bottom:6px;font-size:10px;font-weight:900;color:#ffcf5a;opacity:.85;letter-spacing:1px}
-.pills{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.pills{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) repeat(2,minmax(0,2fr));gap:4px}
 .pill{background:color-mix(in srgb,var(--c) 20%,#0a1426);border:1px solid color-mix(in srgb,var(--c) 70%,transparent);border-radius:8px;text-align:center;padding:3px 0 4px;line-height:1.05}
 .pill b{display:block;font-size:20px;color:var(--c)}.pill span{font-size:10.5px;color:#dfe8f6;white-space:nowrap}
 .pill.s-na,.pill.s-none{opacity:.55}
@@ -166,3 +169,21 @@ body.tv .previewbar{font-size:12px;padding:4px 10px}
 .ignrow input,.ignrow select{opacity:.6}
 .restorebtn{background:#ffcf5a!important;border-color:#ffcf5a!important;color:#2a1600!important;font-size:16px;min-height:44px;padding:10px 18px}
 .ignnote{display:inline-block;margin:0 0 10px;padding:6px 12px;border-radius:999px;background:#3a2a00;border:1px solid #ffcf5a;color:#ffe08a;font-weight:700;text-decoration:none}
+
+/* 50 HR / 100 HR hour pills (10% rule colors) */
+.pill.hp b{font-size:14px;letter-spacing:.3px;white-space:nowrap}.pill.hp span{font-size:11px;font-weight:800}
+.pill.hp.s-over{background:color-mix(in srgb,var(--over) 45%,#0a1426)}.pill.hp.s-over span{color:#fff}
+.tvgrid .pill.hp b{font-size:calc(14px*var(--k))}.tvgrid .pill.hp span{font-size:calc(11px*var(--k))}
+.sheet .pills{margin:8px 0 12px}
+/* grounded planes: own section at the bottom */
+.gsec{margin-top:18px;border:2px solid var(--over);border-radius:14px;padding:10px 12px 12px;background:repeating-linear-gradient(135deg,#2a0c12 0 14px,#220a10 14px 28px)}
+.gsec h2{margin:0 0 10px;color:#ff8a95;font-size:20px;letter-spacing:1px}.gsec h2 span{font-size:13px;font-weight:700;color:#ffc2c8;margin-left:8px;letter-spacing:0}
+.tvgdiv{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;border:3px dashed var(--over);border-radius:var(--r);background:repeating-linear-gradient(135deg,#2a0c12 0 18px,#1c0a10 18px 36px);color:#ffb3bb;text-align:center}
+.tvgdiv b{font-size:calc(30px*var(--k,1));color:#ff6b78;letter-spacing:2px}.tvgdiv span{font-size:calc(15px*var(--k,1))}
+.tvgrid .tile.s-grounded{outline:3px solid var(--over);outline-offset:-3px}
+/* away from Patriot */
+.awaysec{margin-top:18px;border:2px dashed #6fb7ff;border-radius:14px;padding:10px 12px;background:#0c1f38}
+.awaysec h2{margin:0 0 8px;color:#9fd0ff;font-size:18px}.awaysec h2 span{font-size:12px;font-weight:600;color:#b9d6f2;margin-left:6px}
+.awayrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* editor rows are narrow: hour pills drop to their own line */
+.erow .pills{grid-template-columns:repeat(6,minmax(0,1fr))}.erow .pill.hp{grid-column:span 3}

@@ -62,7 +62,26 @@ ok('closed squawk skipped as not open', closed.length === 1 && /Closed/.test(clo
 const f = Imp.toBoardFields(a);
 eq('last100 / annual / no vor invent', [f.last_100hr_at, f.dates.annual, f.dates.vor], [1150.4, '2026-03-01', undefined]);
 ok('GPS database update is skipped on import (not tracked)', !f.dates.vor && !f.ads.some(x => /GPS/.test(x.desc)) && f.skippedReminders.includes('GPS Database Updates'), [f.ads, f.skippedReminders]);
-ok('no vor_done in board fields or CSV', !('vor_done' in f) && !/vor_done/.test(Imp.toCsv(parsed)));
+ok('no VOR invented when FSP has none', f.vor_done === '' && !f.dates.vor);
+
+// N429L (Kyle, 11/16/2026): a plane at Dothan or at a location with any other name must parse as its own aircraft,
+// never folded into the plane above it.
+{
+  const it2 = [];
+  const add2 = (y, words) => words.forEach(([x, str]) => it2.push({ str, x, y, page: 1 }));
+  add2(40, [[42, 'N5520N'], [93, 'Cessna'], [138, '172S'], [249, '(ECP'], [281, 'Patriot'], [323, 'Pilot'], [353, 'Academy)'], [420, '-'], [430, '-'], [440, '-']]);
+  add2(56, [[42, 'Tach:'], [85, '7783.6']]);
+  add2(80, [[42, 'N429L'], [93, 'Cessna'], [138, '172S'], [249, '(DHN'], [281, 'Patriot'], [323, 'Pilot'], [353, 'Academy)'], [420, '-'], [430, '-']]);
+  add2(96, [[42, 'Tach:'], [85, '10450.2']]);
+  add2(120, [[42, 'N123AB'], [93, 'Piper'], [138, 'PA-28'], [249, '(Dothan'], [290, 'Regional)'], [420, '-'], [430, '-'], [440, '-']]);
+  add2(136, [[42, 'Tach:'], [85, '100.0']]);
+  add2(160, [[42, 'N77QQ'], [93, 'Cessna'], [138, '152'], [249, '(VPS'], [281, 'Patriot'], [323, 'Pilot'], [353, 'Academy)'], [420, '-'], [430, '-'], [440, '-']]);
+  add2(176, [[42, 'Tach:'], [85, '200.0']]);
+  const p2 = Imp.parseItems(it2);
+  eq('every header is its own aircraft', p2.aircraft.map(a => a.tail), ['N5520N', 'N429L', 'N123AB', 'N77QQ']);
+  eq('locations: DHN, Dothan by name, unknown code kept', p2.aircraft.map(a => a.locationCode), ['KECP', 'KDHN', 'KDHN', 'VPS']);
+  eq('N429L meters stay with N429L', p2.aircraft[1].meters.tach, 10450.2);
+}
 
 const csv = Imp.toCsv(parsed);
 ok('csv has header and tail', /^tail,type,location,meter/.test(csv) && /N999ZZ/.test(csv), csv.split('\n')[0] + ' | ' + csv.split('\n')[1]);
