@@ -54,5 +54,8 @@ ok('sorted by location (Settings order) then tail, grounded last', S.sortFleet(l
 const cols = ['kecp', 'kcew', 'kdhn', 'kvps', 'x'].map(id => S.locColor(set, id));
 ok('each location has its own color; custom color wins', new Set(cols).size === 5 && cols[3] === '#123456', cols);
 
+// N429L duplicated in the data -> shown once (newest copy)
+const dup = [{ id: 'm', tail: 'N429L', updatedAt: '2026-11-16T10:00:00Z' }, { id: 'x', tail: 'N5520N' }, { id: 'i', tail: 'n429l', updatedAt: '2026-11-17T04:00:00Z' }];
+ok('duplicate tail shown once, newest copy wins', S.dedupeByTail(dup).map(a => a.id).join() === 'i,x' && S.duplicateTails(dup).join() === 'N429L', S.dedupeByTail(dup));
 if (failed) { console.error(failed + ' ten-percent test(s) failed'); process.exit(1); }
 console.log('ten-percent / away / location tests passed');

@@ -382,7 +382,7 @@ var PPAViews = (function () {
   function editList() {
     var ev = U.evalAll(), f = remember('edLoc') || '', q = (remember('edQ') || '').toLowerCase(), sort = remember('edSort2') || 'location';
     var match = function (a) { return (!f || a.location === f) && (!q || (a.tail + ' ' + a.type).toLowerCase().indexOf(q) >= 0); };
-    var list = U.sorted(U.active().filter(match), ev, sort);
+    var list = U.sorted(U.active(null, true).filter(match), ev, sort), dupes = S.duplicateTails(st.aircraft);
     var away = st.aircraft.filter(function (a) { return S.isAway(a, st.settings) && match(a); }).sort(function (a, b) { return a.tail.localeCompare(b.tail); });
     var splitG = sort === 'location' || sort === 'tail';
     var flying = splitG ? list.filter(function (a) { return ev[a.id].overall !== 'grounded'; }) : list, down = splitG ? list.filter(function (a) { return ev[a.id].overall === 'grounded'; }) : [];
@@ -400,7 +400,7 @@ var PPAViews = (function () {
       '<p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
     function rowHtml(a) {
         var e = ev[a.id];
-        return '<div class="erow s-' + e.overall + '"><div><div class="t">' + esc(a.tail) + (a.sample ? ' <span class="chip s-due" style="font-size:10px">SAMPLE</span>' : '') + '</div><div class="ty">' + U.locTag(a.location, 'loc inl') + ' ' + esc(a.type) + '</div><span class="ostat s-' + e.overall + '" style="font-size:12px">' + U.LABEL[e.overall] + '</span>' + (e.openSquawks ? ' <span class="chip s-' + (e.groundingSquawks ? 'over' : 'due') + '">⚑ ' + e.openSquawks + '</span>' : '') + '</div>' +
+        return '<div class="erow s-' + e.overall + '"><div><div class="t">' + esc(a.tail) + (a.sample ? ' <span class="chip s-due" style="font-size:10px">SAMPLE</span>' : '') + (dupes.indexOf(S.normTail(a.tail)) >= 0 ? ' <span class="chip s-over" style="font-size:10px" title="This tail is in the data more than once. The board shows only the most recently updated copy; delete the other one.">DUPLICATE</span>' : '') + '</div><div class="ty">' + U.locTag(a.location, 'loc inl') + ' ' + esc(a.type) + '</div><span class="ostat s-' + e.overall + '" style="font-size:12px">' + U.LABEL[e.overall] + '</span>' + (e.openSquawks ? ' <span class="chip s-' + (e.groundingSquawks ? 'over' : 'due') + '">⚑ ' + e.openSquawks + '</span>' : '') + '</div>' +
           U.pillsHTML(e) +
           '<div class="hrs">' + ['tach', 'hobbs'].map(function (m) {
             var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;

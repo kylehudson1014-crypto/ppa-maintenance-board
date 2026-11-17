@@ -260,6 +260,18 @@ var PPAStatus = (function () {
   function awayTails(settings) { var l = settings && settings.awayTails; if (!Array.isArray(l)) l = DEFAULT_AWAY; return l.map(normTail).filter(Boolean); }
   function isAway(a, settings) { return !!a && awayTails(settings).indexOf(normTail(a.tail)) >= 0; }
   function activeAircraft(list, settings) { return (list || []).filter(function (a) { return !isAway(a, settings); }); }
+  // If the same tail is in the data more than once (e.g. added by hand and again by an import), status screens show
+  // it once: the copy updated most recently wins. The editor still lists every copy so one can be deleted.
+  function dedupeByTail(list) {
+    var best = {}, order = [];
+    (list || []).forEach(function (a) {
+      var k = normTail(a.tail) || a.id;
+      if (!best[k]) { best[k] = a; order.push(k); return; }
+      if (String(a.updatedAt || '') > String(best[k].updatedAt || '')) best[k] = a;
+    });
+    return order.map(function (k) { return best[k]; });
+  }
+  function duplicateTails(list) { var c = {}; (list || []).forEach(function (a) { var k = normTail(a.tail); c[k] = (c[k] || 0) + 1; }); return Object.keys(c).filter(function (k) { return k && c[k] > 1; }); }
 
   // ---- location order + colors ----
   var LOC_PALETTE = { KECP: '#2f7bff', KCEW: '#b05cff', KDHN: '#00b8c8' };
@@ -480,7 +492,7 @@ var PPAStatus = (function () {
   }
 
   return { ITEMS: ITEMS, ROW_LETTERS: ROW_LETTERS, DEFAULT_RULES: DEFAULT_RULES, rules: rules, evaluate: evaluate, evalAD: evalAD, pctState: pctState,
-    awayTails: awayTails, isAway: isAway, activeAircraft: activeAircraft, normTail: normTail, locColor: locColor, locRank: locRank, sortFleet: sortFleet, LOC_PALETTE: LOC_PALETTE,
+    awayTails: awayTails, isAway: isAway, activeAircraft: activeAircraft, dedupeByTail: dedupeByTail, duplicateTails: duplicateTails, normTail: normTail, locColor: locColor, locRank: locRank, sortFleet: sortFleet, LOC_PALETTE: LOC_PALETTE,
     isGpsUpdate: isGpsUpdate, isOilChange: isOilChange, isIgnoredAD: isIgnoredAD, defaultOil50: defaultOil50, trackedADs: trackedADs, alertEvents: alertEvents,
     todayStr: todayStr, addDays: addDays, addCalMonths: addCalMonths, daysBetween: daysBetween, niceDate: niceDate, hoursText: hoursText,
     hoursLabel: hoursLabel, meterOf: meterOf, meterReading: meterReading, meterUpdated: meterUpdated, syncMeters: syncMeters,

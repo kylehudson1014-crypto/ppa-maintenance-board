@@ -14,7 +14,7 @@
   function locTag(id, cls) { return '<span class="' + (cls || 'loc') + '" style="--lc:' + esc(locColor(id)) + '">' + esc(locCode(id)) + '</span>'; }
   function evalAll() { var m = {}; st.aircraft.forEach(function (a) { m[a.id] = S.evaluate(a, st.settings, st.squawks); }); return m; }
   // Planes parked away from Patriot (e.g. N97459) are hidden from every status screen until restored in Edit.
-  function active(list) { return S.activeAircraft(list || st.aircraft, st.settings); }
+  function active(list, keepDupes) { var l = S.activeAircraft(list || st.aircraft, st.settings); return keepDupes ? l : S.dedupeByTail(l); }
   // Card row: A V 1 A T E letters, then 50 HOUR and 100 HOUR pills with hours left (10% rule colors).
   function hoursPill(i, label) {
     if (!i) return '';
