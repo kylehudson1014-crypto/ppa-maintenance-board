@@ -75,6 +75,8 @@ function locCode_(settings, id) { var l = (settings.locations || []).filter(func
 function checkAndAlert() {
   var tz = prop_('TIMEZONE', 'America/Chicago'), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var b = loadBoard_();
+  // Planes marked "Away from Patriot" in Edit (e.g. N97459) get no alerts until restored.
+  if (PPAStatus.activeAircraft) b.aircraft = PPAStatus.activeAircraft(b.aircraft, b.settings);
   var now = {}; b.aircraft.forEach(function (a) { now[a.id] = PPAStatus.evaluate(a, b.settings, b.squawks, today); });
   var prevRaw = PROPS.getProperty('LAST_STATE'), prev = prevRaw ? JSON.parse(prevRaw) : null;
   var sendOn = b.alerts.enabled === true, sent = [], wouldSend = [];

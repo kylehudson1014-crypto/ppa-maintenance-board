@@ -30,12 +30,28 @@ ok('FSP oil values merged into the existing item', oils[0].lastDoneHours === 990
 const seat = a.ads.find(x => x.number === '2011-10-09');
 ok('ignored AD stays ignored after re-import', seat && seat.ignored === true, seat);
 ok('GPS reminder not imported', !a.ads.some(x => /GPS/i.test(x.desc)), a.ads);
-ok('VOR not imported', !a.ads.some(x => /VOR/i.test(x.desc)) && !(a.dates || {}).vor, a);
-ok('import warns about the skipped items', res.warn.some(w => /GPS Database Updates/.test(w) && /VOR Check/.test(w)), res.warn);
+// VOR is back on the A V 1 A T E row (Kyle, 11/16/2026 evening): a dated FSP VOR check fills the V date, not an AD.
+ok('VOR check imported as the V date (not an AD)', !a.ads.some(x => /VOR/i.test(x.desc)) && (a.dates || {}).vor === '2026-11-01', a);
+ok('import warns about the skipped GPS item', res.warn.some(w => /GPS Database Updates/.test(w)), res.warn);
 // re-import again: still one oil change
 st.aircraft = [a];
 const res2 = Set.buildFspImport(parsed([rem('50 Hour Oil Change (Non-Grounding)')]));
 ok('second re-import keeps one oil change', res2.ops[0].a.ads.filter(S.isOilChange).length === 1, res2.ops[0].a.ads);
+
+// N429L: added by hand, then a later FSP report that includes it -> updates the same plane, no duplicate.
+st.aircraft = [{ id: 'm429', tail: 'N429L', type: 'Cessna 172S', location: 'kdhn', meter: 'tach', tach: null, dates: {}, na: {}, ads: [], log: [] }];
+st.settings.locations.push({ id: 'kdhn', code: 'KDHN', name: 'Dothan' });
+const p429 = { reportCreated: '2026-11-20', warnings: [], aircraft: [{ tail: 'N429L', type: 'Cessna 172S', locationCode: 'KDHN', meter: 'tach', meters: { tach: 10450.2 }, reminders: [], squawks: [], doubts: [] }] };
+const r429 = Set.buildFspImport(p429);
+ok('manual N429L + imported N429L -> one plane, updated in place', r429.ops.length === 1 && r429.ops[0].a.id === 'm429' && r429.ops[0].a.tach === 10450.2, r429.ops.map(o => [o.a.id, o.a.tail]));
+// a report WITHOUT N429L tells the editor which board planes were missing
+const rMiss = Set.buildFspImport(parsed([rem('50 Hour Oil Change (Non-Grounding)')]));
+ok('import lists board planes not in the report (N429L)', rMiss.warn.some(w => /Not in this FSP report: N429L \(KDHN\)/.test(w)), rMiss.warn);
+// away plane (N97459 by default) is still updated but flagged as hidden
+st.aircraft = [];
+const p459 = { reportCreated: '2026-11-20', warnings: [], aircraft: [{ tail: 'N97459', type: 'Cessna 172P', locationCode: 'KECP', meter: 'tach', meters: { tach: 5000 }, reminders: [], squawks: [], doubts: [] }] };
+const r459 = Set.buildFspImport(p459);
+ok('away N97459: imported data kept, warned it stays hidden', r459.ops.length === 1 && r459.warn.some(w => /N97459 is marked AWAY/.test(w)), r459.warn);
 
 if (failed) { console.error(failed + ' merge test(s) failed'); process.exit(1); }
 console.log('fsp merge tests passed');

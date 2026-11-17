@@ -9,13 +9,34 @@
   function remember(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem('ppa-mb-' + k)); localStorage.setItem('ppa-mb-' + k, JSON.stringify(v)); } catch (e) { return null; } }
   function locById(id) { return (st.settings.locations || []).filter(function (l) { return l.id === id; })[0]; }
   function locCode(id) { var l = locById(id); return l ? l.code : '—'; }
+  function locColor(id) { return S.locColor(st.settings, id); }
+  // Airport call-sign tag, colored per location (Settings -> Locations).
+  function locTag(id, cls) { return '<span class="' + (cls || 'loc') + '" style="--lc:' + esc(locColor(id)) + '">' + esc(locCode(id)) + '</span>'; }
   function evalAll() { var m = {}; st.aircraft.forEach(function (a) { m[a.id] = S.evaluate(a, st.settings, st.squawks); }); return m; }
+  // Planes parked away from Patriot (e.g. N97459) are hidden from every status screen until restored in Edit.
+  function active(list) { return S.activeAircraft(list || st.aircraft, st.settings); }
+  // Card row: A V 1 A T E letters, then 50 HOUR and 100 HOUR pills with hours left (10% rule colors).
+  function hoursPill(i, label) {
+    if (!i) return '';
+    var txt;
+    if (i.state === 'na') txt = 'N/A';
+    else if (i.hoursLeft == null) txt = i.state === 'none' ? 'no data' : '?';
+    else if (i.hoursLeft < 0) txt = S.hoursText(-i.hoursLeft) + 'h over';
+    else if (Math.round(i.hoursLeft * 10) / 10 <= 0) txt = 'DUE NOW';
+    else txt = S.hoursText(i.hoursLeft) + 'h left';
+    return '<div class="pill hp s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + label + '</b><span>' + esc(txt) + '</span></div>';
+  }
+  function pillsHTML(e) {
+    var by = {}; e.items.forEach(function (i) { by[i.key] = i; });
+    var row = S.ITEMS.filter(function (it) { return it.row === 'letter'; }).map(function (it) { var i = by[it.key]; return '<div class="pill s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + i.letter + '</b><span>' + esc(i.value) + '</span></div>'; }).join('');
+    return '<div class="pills">' + row + hoursPill(by.oil50, '50 HR') + hoursPill(by.hundred, '100 HR') + '</div>';
+  }
   var ORDER = { grounded: 0, due: 1, ok: 2 };
   function sorted(list, ev, mode) {
-    mode = mode || 'status';
+    mode = mode || 'location';
+    if (mode === 'location') return S.sortFleet(list, ev, st.settings);
     return list.slice().sort(function (a, b) {
       if (mode === 'status') { var d = ORDER[ev[a.id].overall] - ORDER[ev[b.id].overall]; if (d) return d; }
-      if (mode === 'location') { var l = locCode(a.location).localeCompare(locCode(b.location)); if (l) return l; }
       if (mode === 'custom') { var o = (a.order || 0) - (b.order || 0); if (o) return o; }
       return String(a.tail).localeCompare(String(b.tail));
     });
@@ -34,8 +55,7 @@
   function tileHTML(a, e, opt) {
     opt = opt || {};
     var sq = e.openSquawks ? '<span class="' + (e.groundingSquawks ? 'bad' : 'warn') + '">⚑ ' + e.openSquawks + ' squawk' + (e.openSquawks > 1 ? 's' : '') + (e.groundingSquawks ? ' (' + e.groundingSquawks + ' grounding)' : '') + '</span>' : '<span>✓ No open squawks</span>';
-    var h = e.hundred;
-    var hund = h && h.state !== 'na' ? '<span class="' + (h.state === 'over' ? 'bad' : h.state === 'due' ? 'warn' : '') + '">100-hr: ' + esc(h.value) + (h.state === 'over' ? '' : ' left') + '</span>' : '';
+    var hund = '';
     var hrs = '<span>Tach ' + S.hoursLabel(S.meterReading(a, 'tach')) + ' · Hobbs ' + S.hoursLabel(S.meterReading(a, 'hobbs')) + '</span>';
     var stale = e.hoursStale ? '<span class="warn">⏱ ' + esc(S.meterOf(a)) + ' ' + e.staleDays + 'd old</span>' : '';
     var why = e.reasons.length ? '<div class="why">' + esc(e.reasons.slice(0, 3).join(' · ')) + '</div>' : '';
@@ -43,9 +63,9 @@
     var sqText = '';
     if (opt.squawkText && e.squawkList.length) sqText = '<div class="why" style="color:#d8e3f4">' + e.squawkList.slice(0, 2).map(function (s) { return (s.grounding ? '⛔ ' : '• ') + esc(s.text); }).join('<br>') + '</div>';
     return '<div class="tile s-' + e.overall + '" data-id="' + a.id + '">' +
-      '<div class="hd"><span class="tail">' + esc(a.tail) + '</span><span class="ostat s-' + e.overall + '">' + LABEL[e.overall] + '</span><span class="loc">' + esc(locCode(a.location)) + '</span></div>' +
+      '<div class="hd"><span class="tail">' + esc(a.tail) + '</span><span class="ostat s-' + e.overall + '">' + LABEL[e.overall] + '</span>' + locTag(a.location) + '</div>' +
       '<div class="type">' + esc(a.type || '') + (a.ifr === false ? ' · VFR only' : ' · IFR') + '</div>' + why +
-      '<div class="pills">' + e.items.map(function (i) { return '<div class="pill s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + i.letter + '</b><span>' + esc(i.value) + '</span></div>'; }).join('') + '</div>' +
+      pillsHTML(e) +
       '<div class="meta">' + hrs + hund + sq + stale + '</div>' + (opt.squawkText && !e.groundingSquawks ? sqText : '') +
       (note ? '<div class="note">' + esc(note) + '</div>' : '') + (a.sample ? '<div class="samp">SAMPLE</div>' : '') + '</div>';
   }
@@ -81,12 +101,16 @@
   function viewTV() {
     document.body.classList.add('tv');
     var p = tvParams(), tv = st.settings.tv || {}, ev = evalAll();
-    var list = st.aircraft.filter(function (a) { return !p.loc || locCode(a.location).toLowerCase() === p.loc.toLowerCase() || a.location === p.loc; });
-    list = sorted(list, ev, tv.sort || 'status');
+    var list = active().filter(function (a) { return !p.loc || locCode(a.location).toLowerCase() === p.loc.toLowerCase() || a.location === p.loc; });
+    // Location order, grounded planes last on their own row(s) (custom TV order still honored).
+    list = sorted(list, ev, tv.sort === 'custom' ? 'custom' : 'location');
+    if (tv.sort === 'custom') list = list.filter(function (a) { return ev[a.id].overall !== 'grounded'; }).concat(list.filter(function (a) { return ev[a.id].overall === 'grounded'; }));
+    var nG = list.filter(function (a) { return ev[a.id].overall === 'grounded'; }).length, nA = list.length - nG;
+    function slots(cc) { return nG && nA ? Math.ceil(nA / cc) * cc + nG : list.length; } // grounded start on a fresh row
     var W = window.innerWidth - 36, H = window.innerHeight - 92 - 34 - 24, n = Math.max(1, list.length), GAP = 12;
     var best = null;
     for (var cc = 2; cc <= 6; cc++) {
-      var rr = Math.ceil(n / cc), th = (H - GAP * (rr - 1)) / rr, tw = (W - GAP * (cc - 1)) / cc;
+      var rr = Math.ceil(Math.max(1, slots(cc)) / cc), th = (H - GAP * (rr - 1)) / rr, tw = (W - GAP * (cc - 1)) / cc;
       if (th < 190 || tw < 320) continue;
       var k = Math.min(tw / 340, th / 200);
       if (!best || k > best.k) best = { cols: cc, rows: rr, k: k, th: th };
@@ -97,14 +121,24 @@
     var pages = Math.max(1, Math.ceil(list.length / per));
     if (tvPage >= pages) tvPage = 0;
     var show = list.slice(tvPage * per, tvPage * per + per);
+    var tilesHtml = '', sawG = false;
+    show.forEach(function (a, k) {
+      var g = ev[a.id].overall === 'grounded';
+      if (g && !sawG) {
+        sawG = true;
+        var used = k % cols, span = used ? cols - used : 0;
+        if (best && span) tilesHtml += '<div class="tvgdiv" style="grid-column:span ' + span + '"><b>⛔ GROUNDED</b><span>' + nG + ' plane' + (nG > 1 ? 's' : '') + ' below — do not fly</span></div>';
+      }
+      tilesHtml += tileHTML(a, ev[a.id], { squawkText: tv.showSquawkText !== false });
+    });
     var c = counts(ev, list), lu = Store.lastUpdated();
     var locName = p.loc ? (locById((st.settings.locations || []).filter(function (l) { return l.code.toLowerCase() === p.loc.toLowerCase(); }).map(function (l) { return l.id; })[0]) || {}).name : '';
     app.innerHTML = (tv.watermark !== false ? '<div class="wm"></div>' : '') +
       '<div class="tvhead">' + (tv.logo !== false ? '<div class="logo-plate"><img src="img/ppa-logo.png" alt="Patriot Pilot Academy"></div>' : '') +
-      '<div><h1>FLEET MAINTENANCE STATUS' + (p.loc ? ' · ' + esc(p.loc.toUpperCase()) : '') + '</h1><div class="sub">' + esc(locName || 'All locations') + ' · A 1 A T E D 50' + (st.mode === 'demo' ? ' · <b style="color:#ffcf5a">SAMPLE DATA — DEMO</b>' : '') + '</div></div>' +
+      '<div><h1>FLEET MAINTENANCE STATUS' + (p.loc ? ' · ' + esc(p.loc.toUpperCase()) : '') + '</h1><div class="sub">' + esc(locName || 'All locations') + ' · A V 1 A T E · 50 HR · 100 HR' + (st.mode === 'demo' ? ' · <b style="color:#ffcf5a">SAMPLE DATA — DEMO</b>' : '') + '</div></div>' +
       sumChips(c) + '<div class="tvclock"><div class="t" id="tvclock"></div><div class="u" id="tvupd"></div></div></div>' +
-      '<div class="tvgrid" style="--k:' + scale.toFixed(2) + ';grid-template-columns:repeat(' + cols + ',1fr);grid-template-rows:repeat(' + rows + ',' + Math.floor(tileH) + 'px)">' + (show.map(function (a) { return tileHTML(a, ev[a.id], { squawkText: tv.showSquawkText !== false }); }).join('') || '<div class="card">No aircraft yet. Add them in Edit.</div>') + '</div>' +
-      '<div class="tvfoot"><span class="legend"><span class="chip s-ok">current</span><span class="chip s-due">coming due</span><span class="chip s-over">overdue</span><span class="chip s-na">N/A</span></span><span><b>A</b>nnual · <b>1</b>00-hr · <b>A</b>ltimeter/pitot · <b>T</b>ransponder · <b>E</b>LT · A<b>D</b>s · <b>50</b>-hr oil change</span><span>Tracking aid only — aircraft logbooks are the legal record.</span><span class="dots">' + (pages > 1 ? 'Page ' + (tvPage + 1) + ' / ' + pages : '') + '</span></div>';
+      '<div class="tvgrid" style="--k:' + scale.toFixed(2) + ';grid-template-columns:repeat(' + cols + ',1fr);grid-template-rows:repeat(' + rows + ',' + Math.floor(tileH) + 'px)">' + (tilesHtml || '<div class="card">No aircraft yet. Add them in Edit.</div>') + '</div>' +
+      '<div class="tvfoot"><span class="legend"><span class="chip s-ok">current</span><span class="chip s-due">coming due</span><span class="chip s-over">overdue</span><span class="chip s-na">N/A</span></span><span><b>A</b>nnual · <b>V</b>OR · <b>1</b>00-hr · <b>A</b>ltimeter/pitot · <b>T</b>ransponder · <b>E</b>LT · <b>50 HR</b> oil · <b>100 HR</b> inspection (hours left)</span><span>Tracking aid only — aircraft logbooks are the legal record.</span><span class="dots">' + (pages > 1 ? 'Page ' + (tvPage + 1) + ' / ' + pages : '') + '</span></div>';
     function tick() {
       var el = $('#tvclock'); if (!el) return;
       var d = new Date(); el.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -123,11 +157,13 @@
   // ---------- CUSTOMER / FLEET VIEW ----------
   function viewBoard() {
     var ev = evalAll(), f = remember('boardLoc') || '';
-    var list = sorted(st.aircraft.filter(function (a) { return !f || a.location === f; }), ev, 'status');
-    var c = counts(ev, list);
+    var list = sorted(active().filter(function (a) { return !f || a.location === f; }), ev, 'location');
+    var c = counts(ev, list), sqT = { squawkText: (st.settings.public || {}).showSquawkText !== false };
+    var flying = list.filter(function (a) { return ev[a.id].overall !== 'grounded'; }), down = list.filter(function (a) { return ev[a.id].overall === 'grounded'; });
     app.innerHTML = topbar('Fleet status', 'Read-only · tap a plane for details') + '<div class="wrap">' + demoBanner() + sumChips(c) +
-      '<div class="chips" id="locs"><button data-l="" class="' + (!f ? 'on' : '') + '">All</button>' + (st.settings.locations || []).map(function (l) { return '<button data-l="' + l.id + '" class="' + (f === l.id ? 'on' : '') + '">' + esc(l.code) + '</button>'; }).join('') + '</div>' +
-      '<div class="grid">' + list.map(function (a) { return tileHTML(a, ev[a.id], { squawkText: (st.settings.public || {}).showSquawkText !== false }); }).join('') + '</div>' +
+      '<div class="chips" id="locs"><button data-l="" class="' + (!f ? 'on' : '') + '">All</button>' + (st.settings.locations || []).map(function (l) { return '<button data-l="' + l.id + '" class="locchip' + (f === l.id ? ' on' : '') + '" style="--lc:' + esc(locColor(l.id)) + '">' + esc(l.code) + '</button>'; }).join('') + '</div>' +
+      '<div class="grid">' + flying.map(function (a) { return tileHTML(a, ev[a.id], sqT); }).join('') + '</div>' +
+      (down.length ? '<div class="gsec"><h2>⛔ Grounded (' + down.length + ') <span>do not fly</span></h2><div class="grid">' + down.map(function (a) { return tileHTML(a, ev[a.id], sqT); }).join('') + '</div></div>' : '') +
       '<p class="disclaimer">' + DISCLAIMER + '<br>Updated ' + relTime(Store.lastUpdated()) + '</p></div>';
     $$('#locs button').forEach(function (b) { b.onclick = function () { remember('boardLoc', b.dataset.l); render(); }; });
     $$('.tile').forEach(function (t) { t.onclick = function () { detailSheet(t.dataset.id, ev); }; });
@@ -137,7 +173,8 @@
     var showSq = (st.settings.public || {}).showSquawkText !== false;
     var d = document.createElement('div'); d.className = 'sheet';
     d.innerHTML = '<div class="in"><div class="row"><h2 style="margin:0;font-size:24px">' + esc(a.tail) + '</h2><span class="ostat s-' + e.overall + '">' + LABEL[e.overall] + '</span><span class="sp" style="flex:1"></span><button class="btn sm" id="x">Close</button></div>' +
-      '<p class="sub" style="color:var(--mute)">' + esc(a.type) + ' · ' + esc((locById(a.location) || {}).name || '') + '</p>' +
+      '<p class="sub" style="color:var(--mute)">' + locTag(a.location, 'loc inl') + ' ' + esc(a.type) + ' · ' + esc((locById(a.location) || {}).name || '') + '</p>' +
+      pillsHTML(e) +
       '<p class="sub" style="color:#d3def0">Tach ' + S.hoursLabel(S.meterReading(a, 'tach')) + (S.meterUpdated(a, 'tach') ? ' (' + S.niceDate(S.meterUpdated(a, 'tach')) + ')' : '') + ' · Hobbs ' + S.hoursLabel(S.meterReading(a, 'hobbs')) + (S.meterUpdated(a, 'hobbs') ? ' (' + S.niceDate(S.meterUpdated(a, 'hobbs')) + ')' : '') + '</p>' +
       (e.reasons.length ? '<div class="banner ' + (e.overall === 'grounded' ? 'red' : '') + '">' + esc(e.reasons.join(' · ')) + '</div>' : '') +
       (noteText(a) ? '<div class="note" style="margin-bottom:10px">' + esc(noteText(a)) + '</div>' : '') +
@@ -219,7 +256,7 @@
   }
 
   // export helpers for part 2
-  window.PPAUI = { esc: esc, $: $, $$: $$, toast: toast, remember: remember, locById: locById, locCode: locCode, evalAll: evalAll, sorted: sorted, LABEL: LABEL, counts: counts, sumChips: sumChips,
+  window.PPAUI = { esc: esc, $: $, $$: $$, toast: toast, remember: remember, locById: locById, locCode: locCode, locColor: locColor, locTag: locTag, active: active, pillsHTML: pillsHTML, evalAll: evalAll, sorted: sorted, LABEL: LABEL, counts: counts, sumChips: sumChips,
     topbar: topbar, demoBanner: demoBanner, needRole: needRole, noteText: noteText, tileHTML: tileHTML, DISCLAIMER: DISCLAIMER, relTime: relTime };
 
   // ---------- router ----------

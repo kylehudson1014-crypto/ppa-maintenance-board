@@ -14,6 +14,13 @@ var PPAViews = (function () {
   function byId(id) { return st.aircraft.filter(function (a) { return a.id === id; })[0]; }
   function who() { return st.name || (st.user && st.user.email) || 'unknown'; }
   function logEntry(a, what) { a.log = a.log || []; a.log.unshift({ at: new Date().toISOString(), by: who(), what: what }); a.log = a.log.slice(0, 60); }
+  // Away / parked aircraft live in settings.awayTails (default N97459). Restore removes the tail.
+  function setAway(tail, on) {
+    var s = clone(st.settings), l = S.awayTails(st.settings), t = S.normTail(tail);
+    l = l.filter(function (x) { return x !== t; }); if (on) l.push(t);
+    s.awayTails = l;
+    return Store.saveSettings(s).then(function () { toast(on ? tail + ' marked away — hidden from the board' : tail + ' restored to the board'); U.render(true); }).catch(function (e) { toast(e.message, true); });
+  }
   var SEV = [
     { v: 'grounding', c: 's-over', t: '⛔ Unsafe — GROUND the plane', d: 'Plane shows GROUNDED until a mechanic clears it.' },
     { v: 'open', c: 's-due', t: '⚑ Needs fixing — still safe to fly', d: 'Shows as an open squawk.' },
@@ -144,8 +151,8 @@ var PPAViews = (function () {
     }
     var d = sqDraft;
     var locF = d.loc || '', pick = d.ac || '', sev = d.sev || 'open';
-    var list = st.aircraft.filter(function (a) { return !locF || a.location === locF; }).sort(function (a, b) { return a.tail.localeCompare(b.tail); });
     var ev = U.evalAll();
+    var list = S.sortFleet(U.active().filter(function (a) { return !locF || a.location === locF; }), ev, st.settings, { groundedLast: false });
     var picked = pick ? byId(pick) : null;
     var qtsOpts = QTS.map(function (q) { return opt(q, q + ' quart' + (q === 1 ? '' : 's'), d.qts); }).join('');
     var showTach = !picked || S.hasTach(picked);
@@ -163,7 +170,7 @@ var PPAViews = (function () {
     var tSnap = snapBits('tach'), hSnap = snapBits('hobbs');
     app.innerHTML = U.topbar('Post-flight report', 'Replaces the paper log in the aircraft book') + '<div class="wrap" style="max-width:760px">' + U.demoBanner() +
       '<div class="card"><h2>1 · Which airplane?</h2><div class="chips" id="sl"><button type="button" data-l="" class="' + (!locF ? 'on' : '') + '">All</button>' + (st.settings.locations || []).map(function (l) { return '<button type="button" data-l="' + l.id + '" class="' + (locF === l.id ? 'on' : '') + '">' + esc(l.code) + '</button>'; }).join('') + '</div>' +
-      '<div class="acpick">' + list.map(function (a) { return '<button type="button" data-id="' + a.id + '" class="s-' + ev[a.id].overall + (pick === a.id ? ' on' : '') + '"><b>' + esc(a.tail) + '</b><span>' + esc(a.type) + ' · ' + esc(U.locCode(a.location)) + '</span></button>'; }).join('') + '</div></div>' +
+      '<div class="acpick">' + list.map(function (a) { return '<button type="button" data-id="' + a.id + '" class="s-' + ev[a.id].overall + (pick === a.id ? ' on' : '') + '"><b>' + esc(a.tail) + '</b><span>' + esc(a.type) + ' · ' + U.locTag(a.location, 'loc inl') + '</span></button>'; }).join('') + '</div></div>' +
 
       '<div class="card"><h2>2 · Oil added?</h2><div class="oilpick"><button type="button" id="oil-no" class="' + (d.oil !== 'yes' ? 'on' : '') + '">No</button><button type="button" id="oil-yes" class="yes ' + (d.oil === 'yes' ? 'on' : '') + '">Yes</button></div>' +
       '<div id="qtswrap" class="' + (d.oil === 'yes' ? '' : 'hide') + '"><label class="f">How many quarts?<select id="oilqts">' + qtsOpts + '</select></label></div></div>' +
@@ -373,28 +380,40 @@ var PPAViews = (function () {
 
   // ================= EDIT LIST =================
   function editList() {
-    var ev = U.evalAll(), f = remember('edLoc') || '', q = (remember('edQ') || '').toLowerCase(), sort = remember('edSort') || 'status';
-    var list = U.sorted(st.aircraft.filter(function (a) { return (!f || a.location === f) && (!q || (a.tail + ' ' + a.type).toLowerCase().indexOf(q) >= 0); }), ev, sort);
-    var c = U.counts(ev, st.aircraft);
+    var ev = U.evalAll(), f = remember('edLoc') || '', q = (remember('edQ') || '').toLowerCase(), sort = remember('edSort2') || 'location';
+    var match = function (a) { return (!f || a.location === f) && (!q || (a.tail + ' ' + a.type).toLowerCase().indexOf(q) >= 0); };
+    var list = U.sorted(U.active().filter(match), ev, sort);
+    var away = st.aircraft.filter(function (a) { return S.isAway(a, st.settings) && match(a); }).sort(function (a, b) { return a.tail.localeCompare(b.tail); });
+    var splitG = sort === 'location' || sort === 'tail';
+    var flying = splitG ? list.filter(function (a) { return ev[a.id].overall !== 'grounded'; }) : list, down = splitG ? list.filter(function (a) { return ev[a.id].overall === 'grounded'; }) : [];
+    var c = U.counts(ev, U.active());
     var demoRole = st.mode === 'demo' ? '<div class="row" style="margin-bottom:10px"><span class="sub" style="color:var(--mute)">Demo as:</span><select id="dr" style="width:auto">' + opt('editor', 'Owner / Mechanic (edit all)', st.role) + opt('cfi', 'CFI (post-flight report)', st.role) + '</select></div>' : '';
     app.innerHTML = U.topbar('Edit fleet', 'Owner & mechanic · changes save automatically') + '<div class="wrap">' + U.demoBanner() + (st.reportsError ? '<div class="banner red">' + esc(st.reportsError) + '</div>' : '') + demoRole + U.sumChips(c) +
       '<div class="row" style="margin:12px 0"><input type="text" id="q" placeholder="Search tail or type" value="' + esc(remember('edQ') || '') + '" style="max-width:220px"><select id="lf" style="max-width:260px">' + locOptions(f, 'All locations') + '</select>' +
-      '<select id="so" style="max-width:200px">' + opt('status', 'Sort: problems first', sort) + opt('tail', 'Sort: tail number', sort) + opt('location', 'Sort: location', sort) + opt('custom', 'Sort: TV order', sort) + '</select><span style="flex:1"></span><button class="btn" id="flogout">⬇ Export flight log CSV</button><button class="btn pri" id="add">+ Add aircraft</button></div>' +
-      list.map(function (a) {
+      '<select id="so" style="max-width:200px">' + opt('location', 'Sort: location (grounded last)', sort) + opt('status', 'Sort: problems first', sort) + opt('tail', 'Sort: tail number (grounded last)', sort) + opt('custom', 'Sort: TV order', sort) + '</select><span style="flex:1"></span><button class="btn" id="flogout">⬇ Export flight log CSV</button><button class="btn pri" id="add">+ Add aircraft</button></div>' +
+      flying.map(rowHtml).join('') +
+      (down.length ? '<div class="gsec"><h2>⛔ Grounded (' + down.length + ') <span>do not fly</span></h2>' + down.map(rowHtml).join('') + '</div>' : '') +
+      (list.length ? '' : '<div class="card">No aircraft match. Tap + Add aircraft.</div>') +
+      (away.length ? '<div class="awaysec"><h2>✈️ Away from Patriot (' + away.length + ') <span>hidden from the fleet board, TV, report form and alerts</span></h2>' + away.map(function (a) {
+        return '<div class="li awayrow"><b>' + esc(a.tail) + '</b> <span class="sub" style="color:var(--mute)">' + esc(a.type || '') + ' · ' + U.locTag(a.location, 'loc inl') + '</span><span style="flex:1"></span><a class="btn sm" href="#edit/' + a.id + '">Open ›</a><button class="btn pri restorebtn" data-unaway="' + esc(a.tail) + '">↩ Restore to board</button></div>';
+      }).join('') + '</div>' : '') +
+      '<p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
+    function rowHtml(a) {
         var e = ev[a.id];
-        return '<div class="erow s-' + e.overall + '"><div><div class="t">' + esc(a.tail) + (a.sample ? ' <span class="chip s-due" style="font-size:10px">SAMPLE</span>' : '') + '</div><div class="ty">' + esc(a.type) + ' · ' + esc(U.locCode(a.location)) + '</div><span class="ostat s-' + e.overall + '" style="font-size:12px">' + U.LABEL[e.overall] + '</span>' + (e.openSquawks ? ' <span class="chip s-' + (e.groundingSquawks ? 'over' : 'due') + '">⚑ ' + e.openSquawks + '</span>' : '') + '</div>' +
-          '<div class="pills">' + e.items.map(function (i) { return '<div class="pill s-' + i.state + '" title="' + esc(i.label + ': ' + i.detail) + '"><b>' + i.letter + '</b><span>' + esc(i.value) + '</span></div>'; }).join('') + '</div>' +
+        return '<div class="erow s-' + e.overall + '"><div><div class="t">' + esc(a.tail) + (a.sample ? ' <span class="chip s-due" style="font-size:10px">SAMPLE</span>' : '') + '</div><div class="ty">' + U.locTag(a.location, 'loc inl') + ' ' + esc(a.type) + '</div><span class="ostat s-' + e.overall + '" style="font-size:12px">' + U.LABEL[e.overall] + '</span>' + (e.openSquawks ? ' <span class="chip s-' + (e.groundingSquawks ? 'over' : 'due') + '">⚑ ' + e.openSquawks + '</span>' : '') + '</div>' +
+          U.pillsHTML(e) +
           '<div class="hrs">' + ['tach', 'hobbs'].map(function (m) {
             var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
             return '<div class="hmeter"><span>' + meterName(m) + '</span><input type="number" step="0.1" inputmode="decimal" data-hrs="' + a.id + '" data-meter="' + m + '" value="' + esc(hrsVal(a, m)) + '" title="Current ' + meterName(m) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + ';font-size:11px">' + (ud ? S.niceDate(ud) : 'never') + '</span></div>';
           }).join('') + '</div>' +
           oilCell(a) +
           '<div class="row">' + (sort === 'custom' ? '<button class="iconbtn" data-up="' + a.id + '">↑</button><button class="iconbtn" data-dn="' + a.id + '">↓</button>' : '') + '<a class="btn" href="#edit/' + a.id + '">Open ›</a></div></div>';
-      }).join('') + (list.length ? '' : '<div class="card">No aircraft match. Tap + Add aircraft.</div>') + '<p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
+    }
     if ($('#dr')) $('#dr').onchange = function () { Store.setDemoRole(this.value); if (this.value === 'cfi') location.hash = '#squawk'; };
     $('#q').onchange = function () { remember('edQ', this.value); U.render(true); };
     $('#lf').onchange = function () { remember('edLoc', this.value); U.render(true); };
-    $('#so').onchange = function () { remember('edSort', this.value); U.render(true); };
+    $('#so').onchange = function () { remember('edSort2', this.value); U.render(true); };
+    $$('[data-unaway]').forEach(function (b) { b.onclick = function () { setAway(b.dataset.unaway, false); }; });
     $('#add').onclick = addSheet;
     if ($('#flogout')) $('#flogout').onclick = function () { PPASettings.exportFlightLog(); };
     $$('[data-hrs]').forEach(function (i) {
@@ -521,12 +540,13 @@ var PPAViews = (function () {
         var ud = updated(a, m), staleM = ud && S.daysBetween(ud, today()) > S.rules(st.settings).staleHoursDays;
         return '<label class="f">Current ' + meterName(m) + '<input type="number" step="0.1" inputmode="decimal" data-f="' + m + '" value="' + esc(hrsVal(a, m)) + '"><span class="sub" style="color:' + (staleM ? 'var(--due)' : 'var(--mute)') + '">Updated ' + (ud ? S.niceDate(ud) : 'never') + '</span></label>';
       }).join('') + '</div>' +
-      '<div class="row">' + chk('ifr', 'IFR certified (tracks pitot-static)') + chk('forHire', 'Used for hire / instruction (100-hr applies)') + '</div></div>' +
+      '<div class="row">' + chk('ifr', 'IFR certified (tracks VOR + pitot-static)') + chk('forHire', 'Used for hire / instruction (100-hr applies)') + '</div></div>' +
 
       reportsCard(id) +
 
-      '<div class="card"><h2>A 1 A T E D 50</h2>' +
+      '<div class="card"><h2>A V 1 A T E · 50 HR · 100 HR</h2>' + U.pillsHTML(e) +
       dateItem('annual', 'Annual — last done') +
+      dateItem('vor', 'VOR check (91.171, every 30 days for IFR) — last done') +
       itemRow('hundred', '<label class="f">Last 100-hr done at (' + esc(S.meterOf(a)) + ')' + fld('last100', 'number', ' step="0.1" inputmode="decimal"') + '</label>', '<button class="btn ok" data-done="hundred">✓ Done at ' + esc(reading(a) == null ? '?' : reading(a)) + '</button>') +
       dateItem('pitot', 'Altimeter/pitot-static (91.411) — last done') +
       dateItem('xpdr', 'Transponder (91.413) — last done') +
@@ -535,7 +555,7 @@ var PPAViews = (function () {
       itemRow('oil50', '<span class="sub" style="color:var(--mute)">50-hr oil change (non-grounding by default). Always tracked on every plane (it cannot be ignored). Edit it or mark it complied in the ADs &amp; tracked reminders card below.</span>', '') +
       '<p class="sub" style="color:var(--mute);font-size:12px">Calendar-month items are due through the last day of the month (e.g. annual done Mar 10 → due Mar 31 next year). Yellow thresholds are in Settings. 100-hr: the 10-hour overfly allowance (91.409(b)) is info only and never extends the due on this board.</p></div>' +
 
-      '<div class="card"><h2>D · ADs &amp; tracked reminders (+ 50 · oil change)</h2>' + (ignoredN ? '<a class="ignnote" href="javascript:void(0)" onclick="document.getElementById(\'ignsec\').scrollIntoView({behavior:\'smooth\'})">🚫 ' + ignoredN + ' ignored item' + (ignoredN > 1 ? 's' : '') + ' — jump to Restore ↓</a>' : '') + '<p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">The 50-hr oil change is edited here but shows as its own <b>50</b> letter (non-grounding unless you uncheck the box). Tap <b>Ignore</b> to stop tracking an item without deleting it (the oil change cannot be ignored); FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.filter(function (k) { return !S.isIgnoredAD(adList[k]); }).map(adRow).join('') + '</div>' +
+      '<div class="card"><h2>ADs &amp; tracked reminders (+ 50 HR oil change)</h2>' + (ignoredN ? '<a class="ignnote" href="javascript:void(0)" onclick="document.getElementById(\'ignsec\').scrollIntoView({behavior:\'smooth\'})">🚫 ' + ignoredN + ' ignored item' + (ignoredN > 1 ? 's' : '') + ' — jump to Restore ↓</a>' : '') + '<p class="sub" style="color:var(--mute);font-size:12px;margin-top:0">ADs no longer have a letter on the card, but an overdue AD still grounds the plane and shows in its status line. The 50-hr oil change is edited here but shows as the <b>50 HR</b> pill (non-grounding unless you uncheck the box). Tap <b>Ignore</b> to stop tracking an item without deleting it (the oil change cannot be ignored); FSP re-imports keep it ignored. GPS / nav database updates are ignored automatically.</p><div class="listed">' + adOrder.filter(function (k) { return !S.isIgnoredAD(adList[k]); }).map(adRow).join('') + '</div>' +
         (ignoredN ? '<div id="ignsec" class="ignsec"><h3>🚫 Ignored items (' + ignoredN + ') <span class="sub">not counted in status · tap <b>↩ Restore</b> to track again</span></h3><div class="listed">' + adOrder.filter(function (k) { return S.isIgnoredAD(adList[k]); }).map(adRow).join('') + '</div></div>' : '') +
         '<br><button class="btn" id="addad">+ Add AD</button></div>' +
 
@@ -547,6 +567,9 @@ var PPAViews = (function () {
       '<div class="card"><h2>Internal note <span class="chip s-na">staff only — never shown on TV or customer view</span></h2><textarea id="inote">' + esc(priv.internalNote || '') + '</textarea></div>' +
       '<div class="card"><h2>Integration</h2><div class="row"><label class="f">Flight Schedule Pro aircraft ID (for future auto-sync)' + fld('fspAircraftId', 'text', ' placeholder="optional"') + '</label></div></div>' +
       '<details class="card"><summary><b>Change history</b> (' + (a.log || []).length + ')</summary>' + (a.log || []).map(function (l) { return '<div class="sub" style="color:#cfdcf0;font-size:13px;padding:3px 0">' + esc(new Date(l.at).toLocaleString()) + ' · ' + esc(l.by) + ' · ' + esc(l.what) + '</div>'; }).join('') + '</details>' +
+      '<div class="card"><h2>Away from Patriot</h2>' + (S.isAway(a, st.settings) ?
+        '<div class="banner">✈️ ' + esc(a.tail) + ' is marked AWAY — hidden from the fleet board, TV, report form and alerts. Its data is kept and FSP imports still update it.</div><button class="btn pri restorebtn" id="awaybtn">↩ Restore ' + esc(a.tail) + ' to the board</button>' :
+        '<p class="sub" style="color:var(--mute)">Use this when the plane leaves Patriot for a while (e.g. on lease or at another shop). It disappears from every status screen until you tap Restore. Nothing is deleted.</p><button class="btn" id="awaybtn">✈️ Mark ' + esc(a.tail) + ' away (hide from board)</button>') + '</div>' +
       '<div class="card"><button class="btn bad" id="del">Delete ' + esc(a.tail) + '</button></div><p class="disclaimer">' + U.DISCLAIMER + '</p></div>';
 
     function save(mut, msg) { var c = clone(byId(id)); mut(c); return Store.saveAircraft(c).then(function () { toast(msg || 'Saved ✓'); U.render(true); }).catch(function (er) { toast(er.message, true); }); }
@@ -605,6 +628,7 @@ var PPAViews = (function () {
     $$('[data-reopen]').forEach(function (b) { b.onclick = function () { var s = clone(st.closedSquawks.filter(function (x) { return x.id === b.dataset.reopen; })[0]); s.status = 'open'; Store.updateSquawk(s).then(function () { U.render(true); }); }; });
     $('#addsq').onclick = function () { var t = $('#nsq').value.trim(); if (!t) return; Store.addSquawk({ aircraftId: id, tail: a.tail, text: t, severity: $('#nsv').value, reportedBy: who() }).then(function () { toast('Squawk added'); U.render(true); }); };
     $('#inote').onchange = function () { Store.savePrivate(id, { internalNote: this.value }).then(function () { toast('Internal note saved'); }); };
+    $('#awaybtn').onclick = function () { setAway(a.tail, !S.isAway(a, st.settings)); };
     $('#del').onclick = function () { var t = prompt('Type ' + a.tail + ' to delete this aircraft and its data'); if (t && t.trim().toUpperCase() === a.tail.toUpperCase()) Store.deleteAircraft(id).then(function () { location.hash = '#edit'; }); };
   }
 
